@@ -32,8 +32,23 @@ let activeSheetIndex = 0; // Which sheet is being viewed
 let mapInstance = null;
 let mapMarkers = [];
 
+const filesSelected = document.getElementById('filesSelected');
+
 fileInput.addEventListener('change', () => {
-  parseBtn.disabled = !fileInput.files?.length;
+  const files = fileInput.files;
+  parseBtn.disabled = !files?.length;
+  
+  // Show selected file names
+  if (files?.length) {
+    const names = Array.from(files).map(f => f.name);
+    if (names.length === 1) {
+      filesSelected.textContent = names[0];
+    } else {
+      filesSelected.textContent = `${names.length} files: ${names.join(', ')}`;
+    }
+  } else {
+    filesSelected.textContent = '';
+  }
 });
 
 parseBtn.addEventListener('click', async () => {

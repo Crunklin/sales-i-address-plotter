@@ -100,50 +100,93 @@ async function main() {
 
   // Auto-share: make map viewable by anyone with the link (so embed preview works)
   try {
-    // Click the Share button
-    const shareBtn = page.getByRole('button', { name: /share/i }).first();
+    process.stderr.write('[create-mymap] Opening share dialog...\n');
+    
+    // Click the Share button in the toolbar
+    const shareBtn = page.locator('text=Share').first();
     await shareBtn.click({ timeout: 5000 });
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(1500);
 
-    // Google My Maps uses a toggle switch for "Anyone with this link can view"
-    // Find the toggle and click it if it's not already enabled
+    process.stderr.write('[create-mymap] Share dialog opened, looking for toggle...\n');
+
+    // The share dialog has a toggle switch for "Anyone with this link can view"
+    // The toggle is typically a Material Design switch - look for it by various means
     
-    // Method 1: Click the toggle switch directly (it's near the "Anyone with this link can view" text)
-    const toggleRow = page.locator('text=Anyone with this link can view').first();
-    const toggleParent = toggleRow.locator('..'); // Parent container
-    
-    // Try clicking the toggle/switch element in the same row
     let toggled = false;
+
+    // Method 1: Find the toggle by looking for elements near "Anyone with this link"
     try {
-      // Look for toggle input, switch, or clickable area near the text
-      const toggle = toggleParent.locator('input[type="checkbox"], [role="switch"], [role="checkbox"], [class*="toggle"], [class*="switch"]').first();
-      await toggle.click({ timeout: 3000 });
+      // The toggle is usually in a row/div containing the text
+      const row = page.locator('div:has-text("Anyone with this link can view")').first();
+      // Click on the toggle track/thumb (usually has specific classes)
+      const toggle = row.locator('[class*="track"], [class*="thumb"], [class*="switch"], [class*="toggle"], [role="switch"]').first();
+      await toggle.click({ timeout: 2000 });
       toggled = true;
+      process.stderr.write('[create-mymap] Clicked toggle in row\n');
     } catch (_) {}
 
+    // Method 2: Click any toggle/switch role elements
     if (!toggled) {
-      // Method 2: Click the row itself which often toggles the switch
       try {
-        await toggleRow.click({ timeout: 2000 });
-        toggled = true;
+        const switches = page.locator('[role="switch"]');
+        const count = await switches.count();
+        if (count > 0) {
+          await switches.first().click({ timeout: 2000 });
+          toggled = true;
+          process.stderr.write('[create-mymap] Clicked role=switch element\n');
+        }
       } catch (_) {}
     }
 
+    // Method 3: Find Material toggle by aria attributes
     if (!toggled) {
-      // Method 3: Find any toggle/switch in the share dialog
-      const anyToggle = page.locator('[role="switch"], [role="checkbox"], input[type="checkbox"]').first();
-      await anyToggle.click({ timeout: 3000 });
+      try {
+        const ariaToggle = page.locator('[aria-checked="false"]').first();
+        await ariaToggle.click({ timeout: 2000 });
+        toggled = true;
+        process.stderr.write('[create-mymap] Clicked aria-checked=false element\n');
+      } catch (_) {}
+    }
+
+    // Method 4: Find by class patterns common in Google Material UI
+    if (!toggled) {
+      try {
+        const materialToggle = page.locator('.mdc-switch, .mat-slide-toggle, [class*="MuiSwitch"], [class*="toggle-track"]').first();
+        await materialToggle.click({ timeout: 2000 });
+        toggled = true;
+        process.stderr.write('[create-mymap] Clicked material toggle element\n');
+      } catch (_) {}
+    }
+
+    // Method 5: Click the label text itself (sometimes this triggers the toggle)
+    if (!toggled) {
+      try {
+        const label = page.getByText('Anyone with this link can view').first();
+        await label.click({ timeout: 2000 });
+        toggled = true;
+        process.stderr.write('[create-mymap] Clicked label text\n');
+      } catch (_) {}
     }
 
     await page.waitForTimeout(500);
 
     // Close the share dialog
-    const closeBtn = page.getByRole('button', { name: /close|done|save/i }).first();
-    await closeBtn.click({ timeout: 3000 }).catch(async () => {
-      // Try clicking X button or pressing Escape
-      await page.keyboard.press('Escape');
-    });
+    try {
+      const closeBtn = page.getByRole('button', { name: /^close$/i }).first();
+      await closeBtn.click({ timeout: 3000 });
+      process.stderr.write('[create-mymap] Clicked Close button\n');
+    } catch (_) {
+      // Try X button or Escape
+      try {
+        const xBtn = page.locator('[aria-label="Close"], button:has-text("×"), .close-button').first();
+        await xBtn.click({ timeout: 2000 });
+      } catch (_) {
+        await page.keyboard.press('Escape');
+      }
+    }
     await page.waitForTimeout(200);
+    
+    process.stderr.write('[create-mymap] Share dialog closed, toggled=' + toggled + '\n');
   } catch (e) {
     process.stderr.write('[create-mymap] Could not auto-share map: ' + e.message + '\n');
   }
