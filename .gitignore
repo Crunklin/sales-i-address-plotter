@@ -7,4 +7,3 @@ Untitled
 deploy/wizard-ssh-key
 deploy/wizard-ssh-key.pub
 deploy/env.production
-deploy/env.production

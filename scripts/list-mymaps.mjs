@@ -14,12 +14,23 @@ const projectRoot = path.resolve(__dirname, '..');
 const userDataDir = process.env.BROWSER_USER_DATA_DIR || path.join(projectRoot, 'playwright-my-maps-profile');
 // On VPS with Xvfb we set DISPLAY=:99 and run non-headless; otherwise headless for automation-only envs
 const headless = !process.env.DISPLAY;
+const isVps = !!process.env.DISPLAY; // VPS runs with Xvfb
 
 async function main() {
   const launchOpts = {
     headless,
     locale: 'en-US',
-    args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-setuid-sandbox'],
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-gpu',
+      '--disable-software-rasterizer',
+      '--disable-extensions',
+      '--no-first-run',
+    ],
+    timeout: isVps ? 60000 : 30000,
   };
   const context = await chromium.launchPersistentContext(userDataDir, {
     ...launchOpts,
@@ -246,8 +257,8 @@ async function main() {
     exitWithMaps(mapsFromNetwork);
     return;
   }
-  await page.goto('https://mymaps.google.com/', { waitUntil: 'load', timeout: 30000 }).catch(() => null);
-  await page.waitForTimeout(3000);
+  await page.goto('https://mymaps.google.com/', { waitUntil: 'domcontentloaded', timeout: navTimeout }).catch(() => null);
+  await page.waitForTimeout(isVps ? 5000 : 3000);
   let fromPage2 = [];
   try {
     fromPage2 = await page.evaluate(() => (window.__listMymapsCaptured || []).filter((x, i, a) => x.mid && a.findIndex((y) => y.mid === x.mid) === i));

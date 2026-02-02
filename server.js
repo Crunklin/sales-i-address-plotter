@@ -231,7 +231,9 @@ app.get('/api/mymaps-list', (req, res) => {
   child.on('close', (code) => {
     if (responded) return;
     if (code !== 0) {
-      return respond({ error: stderr || 'Failed to list maps', maps: [] }, true);
+      const msg = stderr?.trim() || 'Failed to list maps';
+      const hint = ' You can enter your map ID manually below (from the My Maps URL: .../edit?mid=XXXXX).';
+      return respond({ error: msg + hint, maps: [] }, true);
     }
     const line = stdout.trim().split('\n').pop() || '[]';
     try {
