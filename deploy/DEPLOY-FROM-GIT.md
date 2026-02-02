@@ -1,6 +1,8 @@
 # Auto-deploy from GitHub (one-time setup)
 
-After this one-time setup, every push to `main` will deploy to the VPS automatically.
+**Repo:** https://github.com/Crunklin/sales-i-address-plotter (private)
+
+**GitHub secrets** (`DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`) are already set. After the one-time VPS step below, every push to `main` will deploy automatically.
 
 ---
 
@@ -9,10 +11,10 @@ After this one-time setup, every push to `main` will deploy to the VPS automatic
 SSH into the VPS (use your wizard key or password):
 
 ```bash
-ssh -i deploy/wizard-ssh-key root@YOUR_VPS_IP
+ssh -i deploy/wizard-ssh-key root@167.172.146.216
 ```
 
-Then run (replace `YOUR_GITHUB_USER` and `YOUR_REPO` with your repo, e.g. `myorg/sales-i-address-plotter`):
+Then run (repo is **Crunklin/sales-i-address-plotter**; use your GitHub token if the repo is private):
 
 ```bash
 cd /opt/address-plotter
@@ -37,20 +39,8 @@ sudo npx playwright install chromium
 sudo systemctl restart address-plotter
 ```
 
-If your repo is **private**, use SSH URL and add the VPS deploy key to GitHub (see step 2), or use a Personal Access Token in the URL: `https://TOKEN@github.com/USER/REPO.git`.
-
 ---
 
-## 2. Add GitHub secrets
+## 2. GitHub secrets (already set)
 
-In your GitHub repo: **Settings → Secrets and variables → Actions → New repository secret**.
-
-Add these:
-
-| Secret           | Value |
-|------------------|--------|
-| `DEPLOY_HOST`    | Your VPS IP (e.g. `167.172.146.216`) |
-| `DEPLOY_USER`    | `root` |
-| `DEPLOY_SSH_KEY` | Contents of `deploy/wizard-ssh-key` (the private key file) |
-
-After that, every **push to `main`** will trigger a deploy: the workflow SSHs to the VPS, runs `git pull`, `npm install`, and restarts the app.
+`DEPLOY_HOST`, `DEPLOY_USER`, and `DEPLOY_SSH_KEY` are already configured in the repo. Every **push to `main`** will trigger a deploy: the workflow SSHs to the VPS, runs `git fetch` / `git reset`, `npm install`, and restarts the app.
