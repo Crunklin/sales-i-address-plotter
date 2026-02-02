@@ -34,7 +34,7 @@ async function main() {
     headless,
     acceptDownloads: true,
     locale: 'en-US',
-    args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-setuid-sandbox'],
+    args: ['--disable-blink-features=AutomationControlled', '--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
   };
   const context = await chromium.launchPersistentContext(userDataDir, {
     ...launchOpts,
@@ -46,80 +46,78 @@ async function main() {
   await page.setViewportSize({ width: 1280, height: 900 });
 
   const editUrl = `https://www.google.com/maps/d/edit?mid=${mid}`;
-  await page.goto(editUrl, { waitUntil: 'load', timeout: 30000 });
-  await page.waitForTimeout(400);
+  await page.goto(editUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
+  // Click "Add layer" as soon as it's visible
   const addLayer = page.getByText('Add layer', { exact: true }).first();
-  await addLayer.click({ timeout: 15000 }).catch(() =>
-    page.getByRole('button', { name: /add layer/i }).first().click({ timeout: 5000 })
+  await addLayer.click({ timeout: 10000 }).catch(() =>
+    page.getByRole('button', { name: /add layer/i }).first().click({ timeout: 3000 })
   );
-  await page.waitForTimeout(400);
 
+  // Click "Import" immediately
   const importBtn = page.getByText('Import', { exact: true }).first();
-  await importBtn.click({ timeout: 10000 }).catch(() =>
-    page.getByRole('button', { name: /import/i }).first().click({ timeout: 5000 })
+  await importBtn.click({ timeout: 5000 }).catch(() =>
+    page.getByRole('button', { name: /import/i }).first().click({ timeout: 3000 })
   );
-  await page.waitForTimeout(400);
-  // My Maps shows "Choose a file to import" modal. Try setInputFiles on file input first (no filechooser needed).
+
+  // Try to set file directly on hidden input first (fastest method)
   let fileSet = false;
   try {
     const fileInput = page.locator('input[type="file"]').first();
-    await fileInput.waitFor({ state: 'attached', timeout: 5000 });
+    await fileInput.waitFor({ state: 'attached', timeout: 2000 });
     await fileInput.setInputFiles(kmlPath);
     fileSet = true;
   } catch (_) {}
+
+  // Check iframes if main page didn't work
   if (!fileSet) {
     for (const frame of page.frames()) {
       if (fileSet) break;
       try {
         const fileInput = frame.locator('input[type="file"]').first();
-        await fileInput.waitFor({ state: 'attached', timeout: 3000 });
+        await fileInput.waitFor({ state: 'attached', timeout: 1000 });
         await fileInput.setInputFiles(kmlPath);
         fileSet = true;
       } catch (_) {}
     }
   }
+
+  // Fall back to clicking Browse button
   if (!fileSet) {
     const browseBtn = page.getByRole('button', { name: /browse/i }).first();
     const [fileChooser] = await Promise.all([
-      page.waitForEvent('filechooser', { timeout: 25000 }),
-      browseBtn.click({ timeout: 10000 }).catch(() => page.getByText('Browse', { exact: true }).first().click({ timeout: 5000 })),
+      page.waitForEvent('filechooser', { timeout: 10000 }),
+      browseBtn.click({ timeout: 5000 }).catch(() => page.getByText('Browse', { exact: true }).first().click({ timeout: 3000 })),
     ]);
     await fileChooser.setFiles(kmlPath);
   }
-  await page.waitForTimeout(500);
 
-  const selectBtn = page.getByRole('button', { name: /select|import/i }).first();
-  await selectBtn.click({ timeout: 10000 }).catch(() => null);
-  await page.waitForTimeout(500);
+  // Click through any confirmation buttons quickly
+  await page.getByRole('button', { name: /select|import|upload/i }).first().click({ timeout: 5000 }).catch(() => null);
+  await page.getByRole('button', { name: /finish|done|ok/i }).first().click({ timeout: 3000 }).catch(() => null);
 
-  const finishBtn = page.getByRole('button', { name: /finish|select|done/i }).first();
-  await finishBtn.click({ timeout: 5000 }).catch(() => null);
-
-  await page.waitForTimeout(400);
-
+  // Rename layer if specified
   if (layerName) {
-    await page.waitForTimeout(300);
     try {
-      const untitled = page.getByText('Untitled layer', { exact: true }).first();
-      await untitled.click({ timeout: 5000 });
-      await page.waitForTimeout(150);
-      await page.keyboard.press('Control+a');
-      await page.keyboard.type(layerName, { delay: 30 });
-      await page.keyboard.press('Enter');
+      // Wait briefly for the layer to appear, then click to rename
       await page.waitForTimeout(200);
+      const untitled = page.getByText('Untitled layer', { exact: true }).first();
+      await untitled.click({ timeout: 3000 });
+      await page.keyboard.press('Control+a');
+      await page.keyboard.type(layerName, { delay: 20 });
+      await page.keyboard.press('Enter');
     } catch (_) {
+      // Try alternate method
       try {
-        const layerInput = page.locator('input[placeholder*="layer"], input[placeholder*="Layer"], [contenteditable="true"]').first();
-        await layerInput.waitFor({ state: 'visible', timeout: 3000 });
-        await layerInput.click();
+        const layerInput = page.locator('[contenteditable="true"]').first();
+        await layerInput.click({ timeout: 2000 });
         await layerInput.fill(layerName);
         await page.keyboard.press('Enter');
       } catch (_) {}
     }
   }
 
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(100);
   await context.close();
 }
 
