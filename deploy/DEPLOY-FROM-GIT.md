@@ -11,10 +11,10 @@
 SSH into the VPS (use your wizard key or password):
 
 ```bash
-ssh -i deploy/wizard-ssh-key root@167.172.146.216
+ssh -i deploy/wizard-ssh-key root@YOUR_VPS_IP
 ```
 
-Then run (repo is **Crunklin/sales-i-address-plotter**; use your GitHub token if the repo is private):
+Then run (repo is **Crunklin/sales-i-address-plotter**; private — use a [Personal Access Token](https://github.com/settings/tokens) in the URL, or set up a deploy key):
 
 ```bash
 cd /opt/address-plotter
@@ -23,9 +23,14 @@ cd /opt/address-plotter
 cp .env /tmp/address-plotter-env.bak
 cp -r browser-profile /tmp/address-plotter-browser-profile.bak 2>/dev/null || true
 
-# Replace app with a clone of your repo (use your actual repo URL)
+# Leave the directory before removing it (otherwise the shell breaks)
+cd /
+
+# Remove old app and clone from GitHub (use YOUR_TOKEN if repo is private)
 sudo rm -rf /opt/address-plotter
-sudo git clone https://github.com/YOUR_GITHUB_USER/YOUR_REPO.git /opt/address-plotter
+sudo git clone https://github.com/Crunklin/sales-i-address-plotter.git /opt/address-plotter
+# If private, use: sudo git clone https://YOUR_TOKEN@github.com/Crunklin/sales-i-address-plotter.git /opt/address-plotter
+
 sudo chown -R root:root /opt/address-plotter
 
 # Restore .env and browser profile
