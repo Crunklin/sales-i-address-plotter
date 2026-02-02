@@ -15,6 +15,10 @@ const EXPORT_KML_PATH = path.join(__dirname, 'address-plotter-export.kml');
 const SCRIPTS_DIR = path.join(__dirname, 'scripts');
 const LIST_MYMAPS = path.join(SCRIPTS_DIR, 'list-mymaps.mjs');
 const IMPORT_MYMAPS = path.join(SCRIPTS_DIR, 'import-to-mymaps.mjs');
+const CREATE_MYMAP = path.join(SCRIPTS_DIR, 'create-mymap.mjs');
+
+// Environment for child processes (Playwright scripts) - inherit DISPLAY and BROWSER_USER_DATA_DIR
+const childEnv = { ...process.env };
 
 const SHARED_SECRET = process.env.SHARED_SECRET || '';
 const AUTH_COOKIE = 'address-plotter-auth';
@@ -214,6 +218,7 @@ app.post('/api/clean-and-geocode', async (req, res) => {
 app.get('/api/mymaps-list', (req, res) => {
   const child = spawn('node', [LIST_MYMAPS], {
     cwd: __dirname,
+    env: childEnv,
     stdio: ['ignore', 'pipe', 'pipe'],
     shell: process.platform === 'win32',
   });
@@ -254,6 +259,50 @@ app.get('/api/mymaps-list', (req, res) => {
     try { child.kill('SIGTERM'); } catch (_) {}
     respond({ error: 'Timed out waiting for maps list. Try again.', maps: [] }, true);
   });
+});
+
+// Create a new My Map. Body: { name?: string }
+app.post('/api/mymaps-create', (req, res) => {
+  const { name } = req.body || {};
+  const mapName = (name && typeof name === 'string') ? name : 'Untitled map';
+
+  const child = spawn('node', [CREATE_MYMAP, mapName], {
+    cwd: __dirname,
+    env: childEnv,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32',
+  });
+  let stdout = '';
+  let stderr = '';
+  let responded = false;
+
+  function respond(body, isError = false) {
+    if (responded) return;
+    responded = true;
+    if (isError) res.status(500).json(body);
+    else res.json(body);
+  }
+
+  child.stdout.on('data', (chunk) => { stdout += chunk; });
+  child.stderr.on('data', (chunk) => { stderr += chunk; });
+  child.on('close', (code) => {
+    if (responded) return;
+    if (code !== 0) {
+      return respond({ error: stderr?.trim() || 'Failed to create map' }, true);
+    }
+    // Script outputs JSON with { mid, title }
+    const lines = stdout.trim().split('\n').filter((s) => s.trim().startsWith('{'));
+    const line = lines.length ? lines[lines.length - 1] : '{}';
+    try {
+      const result = JSON.parse(line);
+      if (!result.mid) throw new Error('No map ID returned');
+      respond(result);
+    } catch (e) {
+      respond({ error: 'Invalid create-map output: ' + (e.message || '') }, true);
+    }
+  });
+  child.on('error', (err) => respond({ error: err.message }, true));
+  req.setTimeout(90000);
 });
 
 // Run import-to-mymaps script with chosen map ID. Browser will open and import.

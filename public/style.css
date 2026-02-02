@@ -270,3 +270,70 @@ tr:hover td {
 
 .lat-lng-ok { color: #22c55e; }
 .lat-lng-miss { color: #f59e0b; }
+
+/* Layer name input */
+.mymaps-layer-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.mymaps-layer-name label {
+  white-space: nowrap;
+}
+
+.mymaps-layer-name input {
+  flex: 1;
+  min-width: 12rem;
+  max-width: 20rem;
+  padding: 0.4rem 0.6rem;
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 0.25rem;
+  color: #fafafa;
+}
+
+/* New map form */
+.mymaps-new-map {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+  background: #18181b;
+  border-radius: 6px;
+}
+
+.mymaps-new-map.hidden {
+  display: none;
+}
+
+.mymaps-new-map label {
+  white-space: nowrap;
+}
+
+.mymaps-new-map input {
+  flex: 1;
+  min-width: 12rem;
+  max-width: 20rem;
+  padding: 0.4rem 0.6rem;
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 0.25rem;
+  color: #fafafa;
+}
+
+.mymaps-new-map button {
+  background: #22c55e;
+}
+
+.mymaps-new-map button:hover:not(:disabled) {
+  background: #16a34a;
+}
+
+/* Manual import button */
+.mymaps-manual button {
+  flex-shrink: 0;
+}

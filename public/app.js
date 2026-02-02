@@ -11,10 +11,16 @@ const addToMyMaps = document.getElementById('addToMyMaps');
 const exportCsv = document.getElementById('exportCsv');
 const mymapsFlow = document.getElementById('mymapsFlow');
 const loadMapsBtn = document.getElementById('loadMapsBtn');
+const createMapBtn = document.getElementById('createMapBtn');
 const mymapsStatus = document.getElementById('mymapsStatus');
 const mymapsSelectWrap = document.getElementById('mymapsSelectWrap');
 const mymapsSelect = document.getElementById('mymapsSelect');
 const importToMapBtn = document.getElementById('importToMapBtn');
+const mymapsNewMap = document.getElementById('mymapsNewMap');
+const newMapNameInput = document.getElementById('newMapName');
+const confirmCreateMapBtn = document.getElementById('confirmCreateMapBtn');
+const layerNameInput = document.getElementById('layerNameInput');
+const importManualBtn = document.getElementById('importManualBtn');
 
 let parsed = { headers: [], rows: [], filename: '' };
 let geocodedRows = [];
@@ -185,8 +191,13 @@ addToMyMaps.addEventListener('click', async () => {
     if (!res.ok) throw new Error(data.error || 'Failed to save KML');
     mymapsFlow.classList.remove('hidden');
     mymapsSelectWrap.classList.add('hidden');
+    mymapsNewMap.classList.add('hidden');
     mymapsSelect.innerHTML = '';
     mymapsStatus.textContent = '';
+    // Set default layer name from filename
+    const defaultLayerName = parsed.filename ? parsed.filename.replace(/\.csv$/i, '') : '';
+    layerNameInput.value = defaultLayerName;
+    layerNameInput.placeholder = defaultLayerName || '(defaults to filename)';
   } catch (e) {
     alert(e.message || 'Failed to save KML for My Maps.');
   }
@@ -213,14 +224,16 @@ loadMapsBtn.addEventListener('click', async () => {
   }
 });
 
-importToMapBtn.addEventListener('click', async () => {
-  const mid = (mymapsSelect.value || document.getElementById('mymapsMapId').value || '').trim();
-  if (!mid) {
-    alert('Pick a map from the list or enter a map ID (from the URL when you open a map in My Maps: .../edit?mid=XXXXX).');
-    return;
-  }
-  const layerName = parsed.filename ? parsed.filename.replace(/\.csv$/i, '') : '';
-  importToMapBtn.disabled = true;
+// Helper: get layer name from input or default to filename
+function getLayerName() {
+  const custom = layerNameInput.value.trim();
+  if (custom) return custom;
+  return parsed.filename ? parsed.filename.replace(/\.csv$/i, '') : '';
+}
+
+// Helper: import KML to a map
+async function importToMap(mid) {
+  const layerName = getLayerName();
   mymapsStatus.textContent = 'Opening browser and importing…';
   try {
     const res = await fetch('/api/mymaps-import', {
@@ -230,12 +243,74 @@ importToMapBtn.addEventListener('click', async () => {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Import failed');
-    mymapsStatus.textContent = 'Done. Check the browser.';
+    mymapsStatus.textContent = 'Done! Layer added to map.';
+    return true;
   } catch (e) {
     mymapsStatus.textContent = '';
     alert(e.message || 'Import failed.');
+    return false;
+  }
+}
+
+importToMapBtn.addEventListener('click', async () => {
+  const mid = mymapsSelect.value.trim();
+  if (!mid) {
+    alert('Pick a map from the list.');
+    return;
+  }
+  importToMapBtn.disabled = true;
+  await importToMap(mid);
+  importToMapBtn.disabled = false;
+});
+
+// Import using manually entered map ID
+importManualBtn.addEventListener('click', async () => {
+  const mid = document.getElementById('mymapsMapId').value.trim();
+  if (!mid) {
+    alert('Enter a map ID (from the URL when you open a map in My Maps: .../edit?mid=XXXXX).');
+    return;
+  }
+  importManualBtn.disabled = true;
+  await importToMap(mid);
+  importManualBtn.disabled = false;
+});
+
+// Show "create new map" form
+createMapBtn.addEventListener('click', () => {
+  mymapsNewMap.classList.remove('hidden');
+  mymapsSelectWrap.classList.add('hidden');
+  // Default new map name to layer name or filename
+  const defaultName = getLayerName() || 'My new map';
+  newMapNameInput.value = defaultName;
+  newMapNameInput.focus();
+});
+
+// Create new map and add layer
+confirmCreateMapBtn.addEventListener('click', async () => {
+  const mapName = newMapNameInput.value.trim() || 'Untitled map';
+  confirmCreateMapBtn.disabled = true;
+  createMapBtn.disabled = true;
+  mymapsStatus.textContent = 'Creating new map…';
+
+  try {
+    const res = await fetch('/api/mymaps-create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: mapName }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Failed to create map');
+
+    mymapsStatus.textContent = `Map "${data.title || mapName}" created. Adding layer…`;
+
+    // Now import the layer to the new map
+    await importToMap(data.mid);
+  } catch (e) {
+    mymapsStatus.textContent = '';
+    alert(e.message || 'Failed to create map.');
   } finally {
-    importToMapBtn.disabled = false;
+    confirmCreateMapBtn.disabled = false;
+    createMapBtn.disabled = false;
   }
 });
 
