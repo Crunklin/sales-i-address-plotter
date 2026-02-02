@@ -239,8 +239,10 @@ async function main() {
 
   function exitWithMaps(mapsToSend) {
     const out = JSON.stringify(Array.isArray(mapsToSend) ? mapsToSend : []);
-    process.stdout.write(out + '\n');
-    context.close().catch(() => {}).finally(() => process.exit(0));
+    // Flush before exit: on VPS/Linux piped stdout is block-buffered; parent won't see output otherwise
+    process.stdout.write(out + '\n', () => {
+      context.close().catch(() => {}).finally(() => process.exit(0));
+    });
   }
 
   let maps = mapsFromNetwork.length > 0 ? [...mapsFromNetwork] : [];
@@ -362,12 +364,12 @@ async function main() {
     }
   }
 
-  process.stdout.write(JSON.stringify(maps) + '\n');
-  context.close().catch(() => {}).finally(() => process.exit(0));
+  process.stdout.write(JSON.stringify(maps) + '\n', () => {
+    context.close().catch(() => {}).finally(() => process.exit(0));
+  });
 }
 
 main().catch((err) => {
   process.stderr.write(String(err) + '\n');
-  process.stdout.write('[]\n');
-  process.exit(1);
+  process.stdout.write('[]\n', () => process.exit(1));
 });

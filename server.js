@@ -235,7 +235,9 @@ app.get('/api/mymaps-list', (req, res) => {
       const hint = ' You can enter your map ID manually below (from the My Maps URL: .../edit?mid=XXXXX).';
       return respond({ error: msg + hint, maps: [] }, true);
     }
-    const line = stdout.trim().split('\n').pop() || '[]';
+    // Script writes one JSON line; on VPS there may be extra stdout, so find a line that looks like [...]
+    const lines = stdout.trim().split('\n').filter((s) => s.trim().startsWith('['));
+    const line = lines.length ? lines[lines.length - 1] : '[]';
     try {
       const maps = JSON.parse(line);
       respond({ maps: Array.isArray(maps) ? maps : [] });
