@@ -84,9 +84,12 @@
         <p class="mymaps-fallback">Or run in terminal: <code>npm run add-to-mymaps</code></p>
 
         <div class="mymaps-preview hidden" id="mymapsPreview">
-          <p class="mymaps-preview-label">Map preview (read-only):</p>
+          <p class="mymaps-preview-label">Map preview:</p>
           <iframe id="mymapsIframe" src="" allowfullscreen loading="lazy"></iframe>
-          <p class="mymaps-preview-hint">Preview updates after import. <a href="#" id="openMapLink" target="_blank">Open in Google My Maps</a></p>
+          <p class="mymaps-preview-hint">
+            <a href="#" id="openMapLink" target="_blank">Open in Google My Maps</a> 
+            <span class="mymaps-preview-note">(Preview only works for public/shared maps. New maps are private by default.)</span>
+          </p>
         </div>
       </div>
     </section>

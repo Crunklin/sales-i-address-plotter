@@ -24,9 +24,12 @@ const projectRoot = path.resolve(__dirname, '..');
 const envDeployPath = path.join(projectRoot, '.env.deploy');
 if (fs.existsSync(envDeployPath)) {
   const content = fs.readFileSync(envDeployPath, 'utf8');
-  for (const line of content.split('\n')) {
+  // Handle both Windows (\r\n) and Unix (\n) line endings
+  for (const line of content.replace(/\r/g, '').split('\n')) {
     const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$/);
-    if (m) process.env[m[1]] = m[2].replace(/^["']|["']$/g, '').trim();
+    if (m) {
+      process.env[m[1]] = m[2].replace(/^["']|["']$/g, '').trim();
+    }
   }
 }
 

@@ -377,3 +377,8 @@ tr:hover td {
 .mymaps-preview-hint a:hover {
   text-decoration: underline;
 }
+
+.mymaps-preview-note {
+  color: #a1a1aa;
+  font-size: 0.8rem;
+}

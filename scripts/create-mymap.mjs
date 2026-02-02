@@ -56,6 +56,17 @@ async function main() {
     await altBtn.click({ timeout: clickTimeout });
   });
 
+  await page.waitForTimeout(500);
+
+  // Handle the "Creating a MyMaps map always uploads..." confirmation dialog
+  try {
+    const confirmCreate = page.getByRole('button', { name: /^create$/i }).first();
+    await confirmCreate.click({ timeout: 5000 });
+    await page.waitForTimeout(500);
+  } catch (_) {
+    // Dialog might not appear if already dismissed before
+  }
+
   // Wait for the editor to load (URL will have mid=...)
   await page.waitForURL(/\/maps\/d\/.*mid=/, { timeout: navTimeout });
   await page.waitForTimeout(500);
