@@ -82,6 +82,12 @@
         </div>
 
         <p class="mymaps-fallback">Or run in terminal: <code>npm run add-to-mymaps</code></p>
+
+        <div class="mymaps-preview hidden" id="mymapsPreview">
+          <p class="mymaps-preview-label">Map preview (read-only):</p>
+          <iframe id="mymapsIframe" src="" allowfullscreen loading="lazy"></iframe>
+          <p class="mymaps-preview-hint">Preview updates after import. <a href="#" id="openMapLink" target="_blank">Open in Google My Maps</a></p>
+        </div>
       </div>
     </section>
   </main>

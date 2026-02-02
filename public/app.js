@@ -21,6 +21,11 @@ const newMapNameInput = document.getElementById('newMapName');
 const confirmCreateMapBtn = document.getElementById('confirmCreateMapBtn');
 const layerNameInput = document.getElementById('layerNameInput');
 const importManualBtn = document.getElementById('importManualBtn');
+const mymapsPreview = document.getElementById('mymapsPreview');
+const mymapsIframe = document.getElementById('mymapsIframe');
+const openMapLink = document.getElementById('openMapLink');
+
+let currentMapId = null; // Track currently selected/created map for preview
 
 let parsed = { headers: [], rows: [], filename: '' };
 let geocodedRows = [];
@@ -192,8 +197,10 @@ addToMyMaps.addEventListener('click', async () => {
     mymapsFlow.classList.remove('hidden');
     mymapsSelectWrap.classList.add('hidden');
     mymapsNewMap.classList.add('hidden');
+    mymapsPreview.classList.add('hidden');
     mymapsSelect.innerHTML = '';
     mymapsStatus.textContent = '';
+    currentMapId = null;
     // Set default layer name from filename
     const defaultLayerName = parsed.filename ? parsed.filename.replace(/\.csv$/i, '') : '';
     layerNameInput.value = defaultLayerName;
@@ -205,6 +212,7 @@ addToMyMaps.addEventListener('click', async () => {
 
 loadMapsBtn.addEventListener('click', async () => {
   loadMapsBtn.disabled = true;
+  mymapsNewMap.classList.add('hidden');
   mymapsStatus.textContent = 'Opening browser to load your maps… (browser will close automatically; pick a map below)';
   try {
     const res = await fetch('/api/mymaps-list');
@@ -216,6 +224,10 @@ loadMapsBtn.addEventListener('click', async () => {
       ? maps.map((m) => `<option value="${escapeHtml(m.mid)}">${escapeHtml(m.title || m.mid)}</option>`).join('')
       : '';
     mymapsSelectWrap.classList.toggle('hidden', !maps.length);
+    // Show preview for the first/selected map
+    if (maps.length && mymapsSelect.value) {
+      showMapPreview(mymapsSelect.value);
+    }
   } catch (e) {
     mymapsStatus.textContent = '';
     alert(e.message || 'Failed to load maps.');
@@ -223,6 +235,30 @@ loadMapsBtn.addEventListener('click', async () => {
     loadMapsBtn.disabled = false;
   }
 });
+
+// Helper: show map preview iframe
+function showMapPreview(mid) {
+  if (!mid) {
+    mymapsPreview.classList.add('hidden');
+    currentMapId = null;
+    return;
+  }
+  currentMapId = mid;
+  const embedUrl = `https://www.google.com/maps/d/embed?mid=${encodeURIComponent(mid)}`;
+  const editUrl = `https://www.google.com/maps/d/edit?mid=${encodeURIComponent(mid)}`;
+  mymapsIframe.src = embedUrl;
+  openMapLink.href = editUrl;
+  mymapsPreview.classList.remove('hidden');
+}
+
+// Helper: refresh map preview (e.g., after import)
+function refreshMapPreview() {
+  if (currentMapId && mymapsIframe.src) {
+    // Force reload by appending a cache-buster
+    const base = `https://www.google.com/maps/d/embed?mid=${encodeURIComponent(currentMapId)}`;
+    mymapsIframe.src = base + '&t=' + Date.now();
+  }
+}
 
 // Helper: get layer name from input or default to filename
 function getLayerName() {
@@ -244,6 +280,9 @@ async function importToMap(mid) {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Import failed');
     mymapsStatus.textContent = 'Done! Layer added to map.';
+    // Show/refresh preview after successful import
+    showMapPreview(mid);
+    setTimeout(refreshMapPreview, 2000); // Refresh after a delay to let Google update
     return true;
   } catch (e) {
     mymapsStatus.textContent = '';
@@ -251,6 +290,14 @@ async function importToMap(mid) {
     return false;
   }
 }
+
+// Show preview when a map is selected from dropdown
+mymapsSelect.addEventListener('change', () => {
+  const mid = mymapsSelect.value.trim();
+  if (mid) {
+    showMapPreview(mid);
+  }
+});
 
 importToMapBtn.addEventListener('click', async () => {
   const mid = mymapsSelect.value.trim();
@@ -303,8 +350,14 @@ confirmCreateMapBtn.addEventListener('click', async () => {
 
     mymapsStatus.textContent = `Map "${data.title || mapName}" created. Adding layer…`;
 
+    // Show preview of the new map
+    showMapPreview(data.mid);
+
     // Now import the layer to the new map
     await importToMap(data.mid);
+
+    // Hide the create form after success
+    mymapsNewMap.classList.add('hidden');
   } catch (e) {
     mymapsStatus.textContent = '';
     alert(e.message || 'Failed to create map.');

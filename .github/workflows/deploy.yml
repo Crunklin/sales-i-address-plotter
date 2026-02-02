@@ -4,8 +4,9 @@ name: Deploy to VPS
 on:
   push:
     branches: [main]
+  workflow_dispatch:  # Allow manual trigger for debugging
 
-# Cancel in-progress runs for the same branch (prevents queue buildup)
+# Cancel in-progress runs for the same branch
 concurrency:
   group: deploy-${{ github.ref }}
   cancel-in-progress: true
@@ -13,21 +14,60 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-22.04
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          timeout: 60s
-          command_timeout: 5m
-          script: |
+      - name: Validate secrets
+        run: |
+          if [ -z "${{ secrets.DEPLOY_HOST }}" ]; then
+            echo "::error::DEPLOY_HOST secret is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.DEPLOY_USER }}" ]; then
+            echo "::error::DEPLOY_USER secret is not set"
+            exit 1
+          fi
+          if [ -z "${{ secrets.DEPLOY_SSH_KEY }}" ]; then
+            echo "::error::DEPLOY_SSH_KEY secret is not set"
+            exit 1
+          fi
+          echo "All secrets are set"
+          echo "Host: ${{ secrets.DEPLOY_HOST }}"
+          echo "User: ${{ secrets.DEPLOY_USER }}"
+
+      - name: Setup SSH key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # Disable strict host checking (first-time connection)
+          echo "Host *" >> ~/.ssh/config
+          echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+          echo "  UserKnownHostsFile /dev/null" >> ~/.ssh/config
+          echo "  ConnectTimeout 30" >> ~/.ssh/config
+          chmod 600 ~/.ssh/config
+
+      - name: Test SSH connection
+        run: |
+          echo "Testing SSH connection to ${{ secrets.DEPLOY_HOST }}..."
+          ssh -i ~/.ssh/deploy_key -o BatchMode=yes ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} "echo 'SSH OK'; hostname; uptime" || {
+            echo "::error::SSH connection failed"
+            exit 1
+          }
+
+      - name: Deploy
+        run: |
+          ssh -i ~/.ssh/deploy_key ${{ secrets.DEPLOY_USER }}@${{ secrets.DEPLOY_HOST }} << 'ENDSSH'
+            set -e
             cd /opt/address-plotter
+            echo "Fetching latest code..."
             git fetch origin main
             git reset --hard origin/main
-            npm install
+            echo "Installing dependencies..."
+            npm install --production
+            echo "Installing Playwright Chromium..."
             npx playwright install chromium --with-deps 2>/dev/null || true
-            sudo sed -i 's/\r$//' deploy/setup-vps.sh 2>/dev/null || true
+            echo "Restarting service..."
             sudo systemctl restart address-plotter
+            echo "Deploy complete!"
+            sudo systemctl status address-plotter --no-pager || true
+          ENDSSH
