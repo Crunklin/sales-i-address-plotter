@@ -271,27 +271,91 @@ tr:hover td {
 .lat-lng-ok { color: #22c55e; }
 .lat-lng-miss { color: #f59e0b; }
 
-/* Layer name input */
-.mymaps-layer-name {
+/* Sheets list */
+.sheets-list {
+  margin-bottom: 1rem;
+  padding: 1rem;
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+}
+
+.sheets-list.hidden {
+  display: none;
+}
+
+.sheets-list p {
+  margin: 0 0 0.75rem 0;
+  font-size: 0.9rem;
+}
+
+#sheetsList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sheet-item {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 6px;
+  cursor: pointer;
 }
 
-.mymaps-layer-name label {
+.sheet-item:hover {
+  background: #27272a;
+}
+
+.sheet-item.active {
+  border-color: #3b82f6;
+  background: #1e3a5f;
+}
+
+.sheet-item input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #3b82f6;
+}
+
+.sheet-item-name {
+  min-width: 10rem;
+  max-width: 16rem;
+  font-size: 0.85rem;
+  color: #a1a1aa;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.mymaps-layer-name input {
+.sheet-item-count {
+  font-size: 0.8rem;
+  color: #a1a1aa;
+  white-space: nowrap;
+}
+
+.sheet-layer-name {
   flex: 1;
-  min-width: 12rem;
-  max-width: 20rem;
-  padding: 0.4rem 0.6rem;
-  background: #18181b;
+  min-width: 8rem;
+  max-width: 14rem;
+  padding: 0.3rem 0.5rem;
+  background: #27272a;
   border: 1px solid #3f3f46;
-  border-radius: 0.25rem;
+  border-radius: 4px;
   color: #fafafa;
+  font-size: 0.85rem;
+}
+
+.sheet-layer-name:focus {
+  outline: none;
+  border-color: #3b82f6;
+}
+
+.sheet-item.active .sheet-layer-name {
+  background: #27272a;
 }
 
 /* New map form */

@@ -3,6 +3,8 @@ const parseBtn = document.getElementById('parseBtn');
 const progressSection = document.getElementById('progressSection');
 const progressText = document.getElementById('progressText');
 const progressBar = document.getElementById('progressBar');
+const sheetsSection = document.getElementById('sheetsSection');
+const sheetsList = document.getElementById('sheetsList');
 const resultsSection = document.getElementById('resultsSection');
 const tableHead = document.getElementById('tableHead');
 const tableBody = document.getElementById('tableBody');
@@ -19,16 +21,14 @@ const importToMapBtn = document.getElementById('importToMapBtn');
 const mymapsNewMap = document.getElementById('mymapsNewMap');
 const newMapNameInput = document.getElementById('newMapName');
 const confirmCreateMapBtn = document.getElementById('confirmCreateMapBtn');
-const layerNameInput = document.getElementById('layerNameInput');
 const importManualBtn = document.getElementById('importManualBtn');
 const mymapsPreview = document.getElementById('mymapsPreview');
 const mymapsIframe = document.getElementById('mymapsIframe');
 const openMapLink = document.getElementById('openMapLink');
 
-let currentMapId = null; // Track currently selected/created map for preview
-
-let parsed = { headers: [], rows: [], filename: '' };
-let geocodedRows = [];
+let currentMapId = null;
+let sheets = []; // Array of { filename, headers, rows, geocodedRows, selected, layerName }
+let activeSheetIndex = 0; // Which sheet is being viewed
 let mapInstance = null;
 let mapMarkers = [];
 
@@ -37,53 +37,141 @@ fileInput.addEventListener('change', () => {
 });
 
 parseBtn.addEventListener('click', async () => {
-  const file = fileInput.files?.[0];
-  if (!file) return;
+  const files = fileInput.files;
+  if (!files?.length) return;
   parseBtn.disabled = true;
+  sheets = [];
+  
   try {
-    const form = new FormData();
-    form.append('file', file);
-    const res = await fetch('/api/parse', { method: 'POST', body: form });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || data.error || 'Parse failed');
-    parsed = { headers: data.headers, rows: data.rows, filename: data.filename || '' };
-    runCleanAndGeocode();
+    // Parse all files
+    for (const file of files) {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch('/api/parse', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || data.error || `Parse failed for ${file.name}`);
+      const baseName = (data.filename || file.name).replace(/\.csv$/i, '');
+      sheets.push({
+        filename: data.filename || file.name,
+        headers: data.headers,
+        rows: data.rows,
+        geocodedRows: [],
+        selected: true, // All selected by default
+        layerName: baseName, // Default layer name from filename
+      });
+    }
+    
+    // Geocode all sheets
+    await geocodeAllSheets();
+    
   } catch (e) {
-    alert(e.message || 'Failed to parse CSV');
+    alert(e.message || 'Failed to parse CSV(s)');
   } finally {
     parseBtn.disabled = false;
   }
 });
 
-async function runCleanAndGeocode() {
+async function geocodeAllSheets() {
   progressSection.classList.remove('hidden');
-  progressBar.value = 0;
-  progressText.textContent = `Cleaning & geocoding ${parsed.rows.length} rows…`;
   resultsSection.classList.add('hidden');
-
-  try {
-    const res = await fetch('/api/clean-and-geocode', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rows: parsed.rows }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Geocode failed');
-    geocodedRows = data.rows;
-    progressSection.classList.add('hidden');
-    const sheetEl = document.getElementById('sheetName');
-    if (sheetEl) sheetEl.textContent = parsed.filename ? `Sheet: ${parsed.filename}` : '';
-    renderTable(geocodedRows);
-    drawMap(geocodedRows);
-    resultsSection.classList.remove('hidden');
-  } catch (e) {
-    progressSection.classList.add('hidden');
-    alert(e.message || 'Clean & geocode failed');
+  sheetsSection.classList.add('hidden');
+  
+  const totalRows = sheets.reduce((sum, s) => sum + s.rows.length, 0);
+  let processedRows = 0;
+  
+  for (let i = 0; i < sheets.length; i++) {
+    const sheet = sheets[i];
+    progressText.textContent = `Geocoding ${sheet.filename} (${sheet.rows.length} rows)…`;
+    progressBar.value = (processedRows / totalRows) * 100;
+    
+    try {
+      const res = await fetch('/api/clean-and-geocode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rows: sheet.rows }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Geocode failed');
+      sheet.geocodedRows = data.rows;
+    } catch (e) {
+      alert(`Geocoding failed for ${sheet.filename}: ${e.message}`);
+      sheet.geocodedRows = sheet.rows; // Use original rows as fallback
+    }
+    
+    processedRows += sheet.rows.length;
+    progressBar.value = (processedRows / totalRows) * 100;
   }
+  
+  progressSection.classList.add('hidden');
+  
+  // Show sheets list and results
+  activeSheetIndex = 0;
+  renderSheetsList();
+  sheetsSection.classList.remove('hidden');
+  showActiveSheet();
+  resultsSection.classList.remove('hidden');
+}
+
+function renderSheetsList() {
+  sheetsList.innerHTML = sheets.map((sheet, i) => `
+    <div class="sheet-item ${i === activeSheetIndex ? 'active' : ''}" data-index="${i}">
+      <input type="checkbox" class="sheet-checkbox" ${sheet.selected ? 'checked' : ''} data-index="${i}" />
+      <span class="sheet-item-name">${escapeHtml(sheet.filename)}</span>
+      <input type="text" class="sheet-layer-name" data-index="${i}" value="${escapeHtml(sheet.layerName)}" placeholder="Layer name" />
+      <span class="sheet-item-count">${sheet.geocodedRows.length} rows</span>
+    </div>
+  `).join('');
+  
+  // Click on sheet item to view it (but not on inputs)
+  sheetsList.querySelectorAll('.sheet-item').forEach(el => {
+    el.addEventListener('click', (e) => {
+      if (e.target.type === 'checkbox' || e.target.type === 'text') return;
+      activeSheetIndex = parseInt(el.dataset.index);
+      renderSheetsList();
+      showActiveSheet();
+    });
+  });
+  
+  // Checkbox toggle
+  sheetsList.querySelectorAll('.sheet-checkbox').forEach(cb => {
+    cb.addEventListener('change', (e) => {
+      const idx = parseInt(e.target.dataset.index);
+      sheets[idx].selected = e.target.checked;
+    });
+  });
+  
+  // Layer name input
+  sheetsList.querySelectorAll('.sheet-layer-name').forEach(input => {
+    input.addEventListener('input', (e) => {
+      const idx = parseInt(e.target.dataset.index);
+      sheets[idx].layerName = e.target.value;
+    });
+    // Stop click propagation to prevent view switch
+    input.addEventListener('click', (e) => e.stopPropagation());
+  });
+}
+
+function showActiveSheet() {
+  const sheet = sheets[activeSheetIndex];
+  if (!sheet) return;
+  
+  const sheetEl = document.getElementById('sheetName');
+  if (sheetEl) sheetEl.textContent = `Viewing: ${sheet.filename}`;
+  
+  renderTable(sheet.geocodedRows);
+  drawMap(sheet.geocodedRows);
+}
+
+function getSelectedSheets() {
+  return sheets.filter(s => s.selected);
 }
 
 function renderTable(rows) {
-  if (!rows.length) return;
+  if (!rows.length) {
+    tableHead.innerHTML = '';
+    tableBody.innerHTML = '<tr><td>No data</td></tr>';
+    return;
+  }
   const prefer = ['Customer - Parent  Account', 'Address1', 'cleanedAddress', 'Town', 'Postcode', 'lat', 'lng', 'display_name'];
   const allKeys = Object.keys(rows[0]);
   const headers = [...new Set([...prefer.filter((k) => allKeys.includes(k)), ...allKeys.filter((k) => !prefer.includes(k))])];
@@ -168,9 +256,9 @@ function escapeXml(s) {
     .replace(/'/g, '&apos;');
 }
 
-function buildKml() {
-  const placemarks = geocodedRows.map(kmlPlacemark).filter(Boolean).join('');
-  const docName = parsed.filename ? escapeXml(parsed.filename.replace(/\.csv$/i, '')) : 'Address Plotter Export';
+function buildKmlForSheet(sheet) {
+  const placemarks = sheet.geocodedRows.map(kmlPlacemark).filter(Boolean).join('');
+  const docName = escapeXml(sheet.filename.replace(/\.csv$/i, ''));
   return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
@@ -181,11 +269,29 @@ function buildKml() {
 }
 
 exportKml.addEventListener('click', () => {
-  download('addresses.kml', 'application/vnd.google-earth.kml+xml', buildKml());
+  const selected = getSelectedSheets();
+  if (!selected.length) {
+    alert('No sheets selected. Check at least one sheet to export.');
+    return;
+  }
+  // If multiple, download each as separate file
+  selected.forEach(sheet => {
+    const kml = buildKmlForSheet(sheet);
+    const filename = sheet.filename.replace(/\.csv$/i, '') + '.kml';
+    download(filename, 'application/vnd.google-earth.kml+xml', kml);
+  });
 });
 
 addToMyMaps.addEventListener('click', async () => {
-  const kml = buildKml();
+  const selected = getSelectedSheets();
+  if (!selected.length) {
+    alert('No sheets selected. Check at least one sheet to add to My Maps.');
+    return;
+  }
+  
+  // Save KML for the first sheet (we'll import each one sequentially)
+  const firstSheet = selected[0];
+  const kml = buildKmlForSheet(firstSheet);
   try {
     const res = await fetch('/api/save-kml', {
       method: 'POST',
@@ -194,17 +300,14 @@ addToMyMaps.addEventListener('click', async () => {
     });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to save KML');
+    
     mymapsFlow.classList.remove('hidden');
     mymapsSelectWrap.classList.add('hidden');
     mymapsNewMap.classList.add('hidden');
     mymapsPreview.classList.add('hidden');
     mymapsSelect.innerHTML = '';
-    mymapsStatus.textContent = '';
+    mymapsStatus.textContent = `${selected.length} sheet(s) selected. Edit layer names above if needed.`;
     currentMapId = null;
-    // Set default layer name from filename
-    const defaultLayerName = parsed.filename ? parsed.filename.replace(/\.csv$/i, '') : '';
-    layerNameInput.value = defaultLayerName;
-    layerNameInput.placeholder = defaultLayerName || '(defaults to filename)';
   } catch (e) {
     alert(e.message || 'Failed to save KML for My Maps.');
   }
@@ -213,7 +316,7 @@ addToMyMaps.addEventListener('click', async () => {
 loadMapsBtn.addEventListener('click', async () => {
   loadMapsBtn.disabled = true;
   mymapsNewMap.classList.add('hidden');
-  mymapsStatus.textContent = 'Opening browser to load your maps… (browser will close automatically; pick a map below)';
+  mymapsStatus.textContent = 'Opening browser to load your maps…';
   try {
     const res = await fetch('/api/mymaps-list');
     const data = await res.json();
@@ -224,7 +327,6 @@ loadMapsBtn.addEventListener('click', async () => {
       ? maps.map((m) => `<option value="${escapeHtml(m.mid)}">${escapeHtml(m.title || m.mid)}</option>`).join('')
       : '';
     mymapsSelectWrap.classList.toggle('hidden', !maps.length);
-    // Show preview for the first/selected map
     if (maps.length && mymapsSelect.value) {
       showMapPreview(mymapsSelect.value);
     }
@@ -236,7 +338,6 @@ loadMapsBtn.addEventListener('click', async () => {
   }
 });
 
-// Helper: show map preview iframe
 function showMapPreview(mid) {
   if (!mid) {
     mymapsPreview.classList.add('hidden');
@@ -251,52 +352,63 @@ function showMapPreview(mid) {
   mymapsPreview.classList.remove('hidden');
 }
 
-// Helper: refresh map preview (e.g., after import)
 function refreshMapPreview() {
   if (currentMapId && mymapsIframe.src) {
-    // Force reload by appending a cache-buster
     const base = `https://www.google.com/maps/d/embed?mid=${encodeURIComponent(currentMapId)}`;
     mymapsIframe.src = base + '&t=' + Date.now();
   }
 }
 
-// Helper: get layer name from input or default to filename
-function getLayerName() {
-  const custom = layerNameInput.value.trim();
-  if (custom) return custom;
-  return parsed.filename ? parsed.filename.replace(/\.csv$/i, '') : '';
-}
-
-// Helper: import KML to a map
-async function importToMap(mid) {
-  const layerName = getLayerName();
-  mymapsStatus.textContent = 'Opening browser and importing…';
-  try {
-    const res = await fetch('/api/mymaps-import', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ mid, layerName }),
-    });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Import failed');
-    mymapsStatus.textContent = 'Done! Layer added to map.';
-    // Show/refresh preview after successful import
-    showMapPreview(mid);
-    setTimeout(refreshMapPreview, 2000); // Refresh after a delay to let Google update
-    return true;
-  } catch (e) {
-    mymapsStatus.textContent = '';
-    alert(e.message || 'Import failed.');
+// Import all selected sheets as layers to a map
+async function importAllSheetsToMap(mid) {
+  const selected = getSelectedSheets();
+  if (!selected.length) {
+    alert('No sheets selected.');
     return false;
   }
+  
+  for (let i = 0; i < selected.length; i++) {
+    const sheet = selected[i];
+    // Use the per-sheet layerName (editable in the sheets list)
+    const layerName = sheet.layerName.trim() || sheet.filename.replace(/\.csv$/i, '');
+    
+    mymapsStatus.textContent = `Importing layer ${i + 1}/${selected.length}: ${layerName}…`;
+    
+    // Save this sheet's KML
+    const kml = buildKmlForSheet(sheet);
+    try {
+      let res = await fetch('/api/save-kml', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kml }),
+      });
+      let data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to save KML');
+      
+      // Import to map
+      res = await fetch('/api/mymaps-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mid, layerName }),
+      });
+      data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Import failed');
+      
+    } catch (e) {
+      alert(`Failed to import ${sheet.filename}: ${e.message}`);
+      return false;
+    }
+  }
+  
+  mymapsStatus.textContent = `Done! ${selected.length} layer(s) added to map.`;
+  showMapPreview(mid);
+  setTimeout(refreshMapPreview, 2000);
+  return true;
 }
 
-// Show preview when a map is selected from dropdown
 mymapsSelect.addEventListener('change', () => {
   const mid = mymapsSelect.value.trim();
-  if (mid) {
-    showMapPreview(mid);
-  }
+  if (mid) showMapPreview(mid);
 });
 
 importToMapBtn.addEventListener('click', async () => {
@@ -306,33 +418,32 @@ importToMapBtn.addEventListener('click', async () => {
     return;
   }
   importToMapBtn.disabled = true;
-  await importToMap(mid);
+  await importAllSheetsToMap(mid);
   importToMapBtn.disabled = false;
 });
 
-// Import using manually entered map ID
 importManualBtn.addEventListener('click', async () => {
   const mid = document.getElementById('mymapsMapId').value.trim();
   if (!mid) {
-    alert('Enter a map ID (from the URL when you open a map in My Maps: .../edit?mid=XXXXX).');
+    alert('Enter a map ID.');
     return;
   }
   importManualBtn.disabled = true;
-  await importToMap(mid);
+  await importAllSheetsToMap(mid);
   importManualBtn.disabled = false;
 });
 
-// Show "create new map" form
 createMapBtn.addEventListener('click', () => {
   mymapsNewMap.classList.remove('hidden');
   mymapsSelectWrap.classList.add('hidden');
-  // Default new map name to layer name or filename
-  const defaultName = getLayerName() || 'My new map';
+  const selected = getSelectedSheets();
+  const defaultName = selected.length === 1
+    ? selected[0].filename.replace(/\.csv$/i, '')
+    : 'My new map';
   newMapNameInput.value = defaultName;
   newMapNameInput.focus();
 });
 
-// Create new map and add layer
 confirmCreateMapBtn.addEventListener('click', async () => {
   const mapName = newMapNameInput.value.trim() || 'Untitled map';
   confirmCreateMapBtn.disabled = true;
@@ -348,12 +459,10 @@ confirmCreateMapBtn.addEventListener('click', async () => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Failed to create map');
 
-    mymapsStatus.textContent = `Map "${data.title || mapName}" created. Adding layer…`;
+    mymapsStatus.textContent = `Map "${data.title || mapName}" created. Adding layers…`;
 
-    // Import the layer - preview will show after import completes (map is shared by then)
-    await importToMap(data.mid);
+    await importAllSheetsToMap(data.mid);
 
-    // Hide the create form after success
     mymapsNewMap.classList.add('hidden');
   } catch (e) {
     mymapsStatus.textContent = '';
@@ -365,10 +474,19 @@ confirmCreateMapBtn.addEventListener('click', async () => {
 });
 
 exportCsv.addEventListener('click', () => {
-  const headers = [...Object.keys(geocodedRows[0] || {}).filter((h) => h !== '_cleanedAddress')];
-  const line = (row) => headers.map((h) => csvCell(row[h])).join(',');
-  const csv = [headers.join(','), ...geocodedRows.map(line)].join('\r\n');
-  download('addresses-with-lat-lng.csv', 'text/csv', csv);
+  const selected = getSelectedSheets();
+  if (!selected.length) {
+    alert('No sheets selected.');
+    return;
+  }
+  selected.forEach(sheet => {
+    if (!sheet.geocodedRows.length) return;
+    const headers = [...Object.keys(sheet.geocodedRows[0]).filter((h) => h !== '_cleanedAddress')];
+    const line = (row) => headers.map((h) => csvCell(row[h])).join(',');
+    const csv = [headers.join(','), ...sheet.geocodedRows.map(line)].join('\r\n');
+    const filename = sheet.filename.replace(/\.csv$/i, '') + '-with-lat-lng.csv';
+    download(filename, 'text/csv', csv);
+  });
 });
 
 function csvCell(v) {

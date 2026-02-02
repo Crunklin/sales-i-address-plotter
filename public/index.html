@@ -16,15 +16,20 @@
   <main>
     <section class="upload">
       <label class="file-label">
-        <span>Choose CSV</span>
-        <input type="file" id="file" accept=".csv" />
+        <span>Choose CSV(s)</span>
+        <input type="file" id="file" accept=".csv" multiple />
       </label>
-      <button type="button" id="parseBtn" disabled>Process CSV (clean & geocode)</button>
+      <button type="button" id="parseBtn" disabled>Process CSV(s) (clean & geocode)</button>
     </section>
 
     <section class="progress hidden" id="progressSection">
       <p id="progressText">Cleaning & geocoding…</p>
       <progress id="progressBar" value="0" max="100"></progress>
+    </section>
+
+    <section class="sheets-list hidden" id="sheetsSection">
+      <p><strong>Loaded sheets:</strong> Check sheets to import, edit layer names as needed</p>
+      <div id="sheetsList"></div>
     </section>
 
     <section class="results hidden" id="resultsSection">
@@ -50,12 +55,7 @@
         <button type="button" id="exportCsv">Export CSV (lat, lng)</button>
       </div>
       <div class="mymaps-flow hidden" id="mymapsFlow">
-        <p><strong>KML saved.</strong> Select a map or create a new one:</p>
-
-        <div class="mymaps-layer-name">
-          <label for="layerNameInput">Layer name:</label>
-          <input type="text" id="layerNameInput" placeholder="(defaults to filename)" />
-        </div>
+        <p><strong>Ready to import.</strong> Select a map or create a new one:</p>
 
         <div class="mymaps-picker">
           <button type="button" id="loadMapsBtn">Load my maps</button>
