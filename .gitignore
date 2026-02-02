@@ -2,6 +2,7 @@ node_modules/
 playwright-my-maps-profile/
 address-plotter-export.kml
 .env
+.env.deploy
 *.csv
 Untitled
 deploy/wizard-ssh-key

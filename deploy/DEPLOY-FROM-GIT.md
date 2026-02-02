@@ -2,6 +2,20 @@
 
 **Repo:** https://github.com/Crunklin/sales-i-address-plotter (private)
 
+---
+
+## 0. Quick setup: run the wizard
+
+From your project root, run:
+
+```bash
+npm run setup-github-actions
+```
+
+This prompts for your VPS IP, SSH user, and key path, then sets the GitHub secrets automatically using the GitHub CLI (`gh`). Skip to step 1 below after it completes.
+
+---
+
 **GitHub secrets** (`DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`) are already set. After the one-time VPS step below, every push to `main` will deploy automatically.
 
 ---
@@ -49,3 +63,15 @@ sudo systemctl restart address-plotter
 ## 2. GitHub secrets (already set)
 
 `DEPLOY_HOST`, `DEPLOY_USER`, and `DEPLOY_SSH_KEY` are already configured in the repo. Every **push to `main`** will trigger a deploy: the workflow SSHs to the VPS, runs `git fetch` / `git reset`, `npm install`, and restarts the app.
+
+---
+
+## 3. If Actions are down: deploy from your PC
+
+When GitHub Actions is queued or failing, run from the project root:
+
+```bash
+npm run deploy-from-local
+```
+
+Uses the same deploy steps as the workflow. Set `DEPLOY_HOST`, `DEPLOY_USER`, and `DEPLOY_SSH_KEY_PATH` (or `DEPLOY_SSH_KEY`) in `.env.deploy` or your environment. See **deploy/README.md** → “When GitHub Actions is unavailable”.

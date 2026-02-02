@@ -128,3 +128,32 @@ systemctl restart address-plotter
 
 - **App not listening**  
   - Check `systemctl status address-plotter` and `journalctl -u address-plotter -n 50`.
+
+---
+
+## When GitHub Actions is unavailable
+
+If Actions are queued, failing to get a runner, or hitting internal errors, deploy from your PC instead. From the project root:
+
+```bash
+npm run deploy-from-local
+```
+
+This runs the same steps as the workflow: SSH to the VPS → `git fetch` / `git reset` → `npm install` → restart the app.
+
+**Setup once:** Create a `.env.deploy` in the project root (or set env vars) with:
+
+- `DEPLOY_HOST` — VPS IP or hostname  
+- `DEPLOY_USER` — SSH user (e.g. `root`)  
+- `DEPLOY_SSH_KEY_PATH` — path to your private key (e.g. `deploy/wizard-ssh-key`), **or**  
+- `DEPLOY_SSH_KEY` — the private key content (multiline OK in `.env.deploy`)
+
+Example `.env.deploy`:
+
+```
+DEPLOY_HOST=your.vps.ip
+DEPLOY_USER=root
+DEPLOY_SSH_KEY_PATH=deploy/wizard-ssh-key
+```
+
+Keep `.env.deploy` out of the repo (add it to `.gitignore` if you like).

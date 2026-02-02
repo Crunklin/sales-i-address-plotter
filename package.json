@@ -8,7 +8,9 @@
     "dev": "node --watch server.js",
     "add-to-mymaps": "node scripts/add-to-mymaps.mjs",
     "setup-wizard": "node scripts/setup-wizard.mjs",
-    "export-google-profile": "node scripts/export-google-profile.mjs"
+    "export-google-profile": "node scripts/export-google-profile.mjs",
+    "deploy-from-local": "node scripts/deploy-from-local.mjs",
+    "setup-github-actions": "node scripts/setup-github-actions.mjs"
   },
   "dependencies": {
     "csv-parse": "^5.5.2",

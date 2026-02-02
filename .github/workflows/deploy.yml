@@ -5,16 +5,24 @@ on:
   push:
     branches: [main]
 
+# Cancel in-progress runs for the same branch (prevents queue buildup)
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
     steps:
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
+          timeout: 60s
+          command_timeout: 5m
           script: |
             cd /opt/address-plotter
             git fetch origin main
