@@ -98,6 +98,35 @@ async function main() {
     }
   }
 
+  // Auto-share: make map viewable by anyone with the link (so embed preview works)
+  try {
+    // Click the Share button
+    const shareBtn = page.getByRole('button', { name: /share/i }).first();
+    await shareBtn.click({ timeout: 5000 });
+    await page.waitForTimeout(500);
+
+    // Look for "Change" link next to "Private" or click the sharing dropdown
+    const changeLink = page.getByText('Change', { exact: true }).first();
+    await changeLink.click({ timeout: 3000 }).catch(async () => {
+      // Try clicking on restricted/private dropdown
+      const restrictedBtn = page.locator('text=/Restricted|Private|Only people added/i').first();
+      await restrictedBtn.click({ timeout: 3000 });
+    });
+    await page.waitForTimeout(300);
+
+    // Select "Anyone with the link"
+    const anyoneOption = page.getByText('Anyone with the link', { exact: false }).first();
+    await anyoneOption.click({ timeout: 3000 });
+    await page.waitForTimeout(300);
+
+    // Click Done/Save
+    const doneBtn = page.getByRole('button', { name: /done|save/i }).first();
+    await doneBtn.click({ timeout: 3000 }).catch(() => null);
+    await page.waitForTimeout(200);
+  } catch (e) {
+    process.stderr.write('[create-mymap] Could not auto-share map: ' + e.message + '\n');
+  }
+
   await page.waitForTimeout(200);
   await context.close();
 
