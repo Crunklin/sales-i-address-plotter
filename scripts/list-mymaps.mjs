@@ -227,10 +227,11 @@ async function main() {
     };
   });
 
-  await page.goto('https://www.google.com/maps/d/', { waitUntil: 'load', timeout: 30000 });
-  // Maplist comes from XHR; poll briefly and exit as soon as we have maps
-  const pollMs = 400;
-  const pollMax = 8000;
+  const navTimeout = isVps ? 60000 : 30000;
+  await page.goto('https://www.google.com/maps/d/', { waitUntil: 'domcontentloaded', timeout: navTimeout });
+  // Maplist comes from XHR; poll and exit as soon as we have maps (VPS is slower)
+  const pollMs = isVps ? 600 : 400;
+  const pollMax = isVps ? 20000 : 8000;
   for (let elapsed = 0; elapsed < pollMax; elapsed += pollMs) {
     await page.waitForTimeout(pollMs);
     if (mapsFromNetwork.length > 0) break;
