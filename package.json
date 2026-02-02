@@ -1,0 +1,24 @@
+{
+  "name": "address-plotter",
+  "version": "1.0.0",
+  "description": "CSV address cleaner and geocoder with map view and KML/CSV export for Google My Maps",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "add-to-mymaps": "node scripts/add-to-mymaps.mjs",
+    "setup-wizard": "node scripts/setup-wizard.mjs",
+    "export-google-profile": "node scripts/export-google-profile.mjs"
+  },
+  "dependencies": {
+    "csv-parse": "^5.5.2",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "multer": "^1.4.5-lts.1",
+    "node-fetch": "^3.3.2",
+    "ssh2": "^1.17.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.40.0"
+  }
+}

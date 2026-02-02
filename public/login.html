@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sales-i Address Plotter — Sign in</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .login-box { max-width: 360px; margin: 3rem auto; padding: 2rem; background: #18181b; border-radius: 8px; border: 1px solid #3f3f46; }
+    .login-box h2 { margin: 0 0 1rem 0; font-size: 1.25rem; }
+    .login-box input { width: 100%; padding: 0.6rem; margin-bottom: 1rem; background: #27272a; border: 1px solid #3f3f46; border-radius: 6px; color: #e4e4e7; font-size: 1rem; }
+    .login-box button { width: 100%; padding: 0.6rem; cursor: pointer; }
+    .login-error { color: #f87171; font-size: 0.9rem; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+  <div class="login-box">
+    <h2>Sales-i Address Plotter</h2>
+    <p style="color:#a1a1aa; margin:0 0 1rem 0; font-size:0.9rem;">Enter the shared secret to continue.</p>
+    <form id="loginForm">
+      <input type="password" id="secret" placeholder="Shared secret" autocomplete="off" required />
+      <button type="submit">Sign in</button>
+    </form>
+    <p id="error" class="login-error hidden"></p>
+  </div>
+  <script>
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const secret = document.getElementById('secret').value.trim();
+      const errEl = document.getElementById('error');
+      errEl.classList.add('hidden');
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ secret }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          errEl.textContent = data.error || 'Sign in failed';
+          errEl.classList.remove('hidden');
+          return;
+        }
+        window.location.href = '/';
+      } catch (e) {
+        errEl.textContent = 'Network error';
+        errEl.classList.remove('hidden');
+      }
+    });
+  </script>
+</body>
+</html>

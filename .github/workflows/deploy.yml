@@ -1,0 +1,25 @@
+# Auto-deploy to VPS on push to main
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd /opt/address-plotter
+            git fetch origin main
+            git reset --hard origin/main
+            npm install
+            npx playwright install chromium --with-deps 2>/dev/null || true
+            sudo sed -i 's/\r$//' deploy/setup-vps.sh 2>/dev/null || true
+            sudo systemctl restart address-plotter

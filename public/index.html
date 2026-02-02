@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sales-i Address Plotter</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Sales-i Address Plotter</h1>
+    <p>This tool will take a Sales-i CSV, clean addresses (remove names, PO Box, Attn), geocode to lat/lng, and export to Google My Maps.</p>
+  </header>
+
+  <main>
+    <section class="upload">
+      <label class="file-label">
+        <span>Choose CSV</span>
+        <input type="file" id="file" accept=".csv" />
+      </label>
+      <button type="button" id="parseBtn" disabled>Process CSV (clean & geocode)</button>
+    </section>
+
+    <section class="progress hidden" id="progressSection">
+      <p id="progressText">Cleaning & geocoding…</p>
+      <progress id="progressBar" value="0" max="100"></progress>
+    </section>
+
+    <section class="results hidden" id="resultsSection">
+      <p class="sheet-name" id="sheetName"></p>
+      <div class="tabs">
+        <button type="button" class="tab active" data-tab="table">Table</button>
+        <button type="button" class="tab" data-tab="map">Map</button>
+      </div>
+      <div class="tab-panel active" id="panel-table">
+        <div class="table-wrap">
+          <table id="table">
+            <thead id="tableHead"></thead>
+            <tbody id="tableBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="tab-panel" id="panel-map">
+        <div id="map"></div>
+      </div>
+      <div class="export">
+        <button type="button" id="exportKml">Export KML (download)</button>
+        <button type="button" id="addToMyMaps">Add to Google My Maps (automated)</button>
+        <button type="button" id="exportCsv">Export CSV (lat, lng)</button>
+      </div>
+      <div class="mymaps-flow hidden" id="mymapsFlow">
+        <p><strong>KML saved.</strong> Select which map to add the layer to:</p>
+        <div class="mymaps-picker">
+          <button type="button" id="loadMapsBtn">Load my maps</button>
+          <span class="mymaps-status" id="mymapsStatus"></span>
+        </div>
+        <div class="mymaps-select-wrap hidden" id="mymapsSelectWrap">
+          <label for="mymapsSelect">Map:</label>
+          <select id="mymapsSelect"></select>
+          <button type="button" id="importToMapBtn">Add layer and import</button>
+        </div>
+        <div class="mymaps-manual">
+          <label for="mymapsMapId">Or enter map ID:</label>
+          <input type="text" id="mymapsMapId" placeholder="From URL: .../edit?mid=XXXXX" />
+        </div>
+        <p class="mymaps-fallback">Or run in terminal: <code>npm run add-to-mymaps</code></p>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
