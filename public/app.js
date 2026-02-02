@@ -350,10 +350,7 @@ confirmCreateMapBtn.addEventListener('click', async () => {
 
     mymapsStatus.textContent = `Map "${data.title || mapName}" created. Adding layer…`;
 
-    // Show preview of the new map
-    showMapPreview(data.mid);
-
-    // Now import the layer to the new map
+    // Import the layer - preview will show after import completes (map is shared by then)
     await importToMap(data.mid);
 
     // Hide the create form after success
