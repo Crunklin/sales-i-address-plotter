@@ -99,43 +99,71 @@ async function main() {
   // Rename layer if specified
   if (layerName) {
     try {
-      // Wait for the import to complete and layer to appear
-      await page.waitForTimeout(1000);
+      // Wait for the import to complete
+      await page.waitForTimeout(2000);
 
-      // The layer title is in a container with class containing "layer" 
-      // Find all layer title elements and click the last one (most recently added)
-      // Try multiple selectors since Google's UI varies
+      // The imported layer will have the KML's <Document><name> as its title
+      // We need to find that layer title and click on it to rename it
+      const kmlBaseName = path.basename(kmlPath, '.kml');
+      process.stderr.write(`[import] Looking for layer to rename (from ${kmlBaseName} to ${layerName})...\n`);
+
       let clicked = false;
 
-      // Method 1: Look for layer header elements with contenteditable or click-to-edit
-      const layerHeaders = page.locator('[data-layer-id], .layer-header, [class*="layer"] [class*="title"], [class*="layer"] [class*="name"]');
-      const count = await layerHeaders.count();
-      if (count > 0) {
-        const lastLayer = layerHeaders.last();
-        await lastLayer.click({ timeout: 3000 });
-        clicked = true;
-      }
-
+      // Method 1: Find by the KML document name (Google uses this as layer title)
       if (!clicked) {
-        // Method 2: Find by the KML filename (without extension) - this is what Google names it
-        const kmlBaseName = path.basename(kmlPath, '.kml');
-        const layerByName = page.getByText(kmlBaseName, { exact: false }).first();
-        await layerByName.click({ timeout: 3000 });
-        clicked = true;
+        try {
+          const layerTitle = page.getByText(kmlBaseName, { exact: true }).first();
+          await layerTitle.click({ timeout: 3000 });
+          clicked = true;
+          process.stderr.write('[import] Clicked layer by KML name\n');
+        } catch (_) {}
       }
 
+      // Method 2: Try partial match on KML name
       if (!clicked) {
-        // Method 3: Find any layer container and click the title area
-        const layerContainer = page.locator('[class*="layer"]').first();
-        await layerContainer.locator('[class*="title"], [class*="name"]').first().click({ timeout: 3000 });
+        try {
+          const layerTitle = page.locator(`text="${kmlBaseName}"`).first();
+          await layerTitle.click({ timeout: 3000 });
+          clicked = true;
+          process.stderr.write('[import] Clicked layer by partial KML name\n');
+        } catch (_) {}
       }
 
-      // Now type the new name
-      await page.waitForTimeout(100);
-      await page.keyboard.press('Control+a');
-      await page.keyboard.type(layerName, { delay: 15 });
-      await page.keyboard.press('Enter');
-      await page.waitForTimeout(200);
+      // Method 3: Look for contenteditable elements (layer titles are editable)
+      if (!clicked) {
+        try {
+          const editables = page.locator('[contenteditable="true"]');
+          const count = await editables.count();
+          if (count > 0) {
+            // Click the last editable (most recent layer)
+            await editables.last().click({ timeout: 3000 });
+            clicked = true;
+            process.stderr.write('[import] Clicked last contenteditable element\n');
+          }
+        } catch (_) {}
+      }
+
+      // Method 4: Find "Untitled layer" if that's what it got named
+      if (!clicked) {
+        try {
+          const untitled = page.getByText('Untitled layer', { exact: false }).first();
+          await untitled.click({ timeout: 3000 });
+          clicked = true;
+          process.stderr.write('[import] Clicked Untitled layer\n');
+        } catch (_) {}
+      }
+
+      if (clicked) {
+        // Type the new name (select all first to replace)
+        await page.waitForTimeout(200);
+        await page.keyboard.press('Control+a');
+        await page.keyboard.type(layerName, { delay: 20 });
+        await page.keyboard.press('Enter');
+        await page.waitForTimeout(300);
+        process.stderr.write(`[import] Renamed layer to: ${layerName}\n`);
+      } else {
+        process.stderr.write('[import] Could not find layer title element to click\n');
+      }
 
     } catch (e) {
       process.stderr.write('[import] Could not rename layer: ' + e.message + '\n');

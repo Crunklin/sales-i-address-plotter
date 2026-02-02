@@ -103,25 +103,46 @@ async function main() {
     // Click the Share button
     const shareBtn = page.getByRole('button', { name: /share/i }).first();
     await shareBtn.click({ timeout: 5000 });
+    await page.waitForTimeout(1000);
+
+    // Google My Maps uses a toggle switch for "Anyone with this link can view"
+    // Find the toggle and click it if it's not already enabled
+    
+    // Method 1: Click the toggle switch directly (it's near the "Anyone with this link can view" text)
+    const toggleRow = page.locator('text=Anyone with this link can view').first();
+    const toggleParent = toggleRow.locator('..'); // Parent container
+    
+    // Try clicking the toggle/switch element in the same row
+    let toggled = false;
+    try {
+      // Look for toggle input, switch, or clickable area near the text
+      const toggle = toggleParent.locator('input[type="checkbox"], [role="switch"], [role="checkbox"], [class*="toggle"], [class*="switch"]').first();
+      await toggle.click({ timeout: 3000 });
+      toggled = true;
+    } catch (_) {}
+
+    if (!toggled) {
+      // Method 2: Click the row itself which often toggles the switch
+      try {
+        await toggleRow.click({ timeout: 2000 });
+        toggled = true;
+      } catch (_) {}
+    }
+
+    if (!toggled) {
+      // Method 3: Find any toggle/switch in the share dialog
+      const anyToggle = page.locator('[role="switch"], [role="checkbox"], input[type="checkbox"]').first();
+      await anyToggle.click({ timeout: 3000 });
+    }
+
     await page.waitForTimeout(500);
 
-    // Look for "Change" link next to "Private" or click the sharing dropdown
-    const changeLink = page.getByText('Change', { exact: true }).first();
-    await changeLink.click({ timeout: 3000 }).catch(async () => {
-      // Try clicking on restricted/private dropdown
-      const restrictedBtn = page.locator('text=/Restricted|Private|Only people added/i').first();
-      await restrictedBtn.click({ timeout: 3000 });
+    // Close the share dialog
+    const closeBtn = page.getByRole('button', { name: /close|done|save/i }).first();
+    await closeBtn.click({ timeout: 3000 }).catch(async () => {
+      // Try clicking X button or pressing Escape
+      await page.keyboard.press('Escape');
     });
-    await page.waitForTimeout(300);
-
-    // Select "Anyone with the link"
-    const anyoneOption = page.getByText('Anyone with the link', { exact: false }).first();
-    await anyoneOption.click({ timeout: 3000 });
-    await page.waitForTimeout(300);
-
-    // Click Done/Save
-    const doneBtn = page.getByRole('button', { name: /done|save/i }).first();
-    await doneBtn.click({ timeout: 3000 }).catch(() => null);
     await page.waitForTimeout(200);
   } catch (e) {
     process.stderr.write('[create-mymap] Could not auto-share map: ' + e.message + '\n');
