@@ -159,13 +159,15 @@ async function main() {
     }
 
     await browser.humanDelay(200, 400);
-    // Don't close browser - keep session alive
+    // Close browser to release profile lock for next operation
+    await browser.closeBrowser();
 
     // Output result as JSON
     const result = { mid, title: mapName };
     process.stdout.write(JSON.stringify(result) + '\n');
     
   } catch (err) {
+    await browser.closeBrowser();
     throw err;
   }
 }

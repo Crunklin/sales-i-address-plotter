@@ -283,10 +283,11 @@ async function main() {
     }
 
     await browser.humanDelay(100, 300);
-    // Don't close browser - keep session alive for next operation
+    // Close browser to release profile lock for next operation
+    await browser.closeBrowser();
     
   } catch (err) {
-    // On error, still don't close browser to preserve session
+    await browser.closeBrowser();
     throw err;
   }
 }
