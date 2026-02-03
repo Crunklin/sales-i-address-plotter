@@ -2,7 +2,7 @@
 /**
  * Add a new layer to a specific My Map and import the KML file.
  * Used by the app after user picks a map in the UI.
- * Usage: node scripts/import-to-mymaps.mjs <mid> [kmlPath] [layerName] [colorIndex]
+ * Usage: node scripts/import-to-mymaps.mjs <mid> [kmlPath] [layerName]
  */
 
 import path from 'path';
@@ -17,23 +17,6 @@ const defaultKmlPath = path.join(projectRoot, 'address-plotter-export.kml');
 const mid = process.argv[2];
 const kmlPath = process.argv[3] ? path.resolve(process.cwd(), process.argv[3]) : defaultKmlPath;
 const layerName = process.argv[4] || '';
-const colorIndex = parseInt(process.argv[5] || '0', 10);
-
-// Google My Maps color names (in order they appear in the palette)
-const GOOGLE_COLORS = [
-  'Blue',      // 0
-  'Red',       // 1
-  'Green',     // 2
-  'Yellow',    // 3
-  'Purple',    // 4
-  'Pink',      // 5
-  'Cyan',      // 6
-  'Orange',    // 7
-  'Light Green', // 8
-  'Brown',     // 9
-];
-
-const LAYER_WAIT_MS = parseInt(process.env.MYMAPS_LAYER_WAIT_MS || '90000', 10);
 
 if (!mid) {
   process.stderr.write('Usage: node scripts/import-to-mymaps.mjs <mid> [kmlPath] [layerName]\n');
@@ -42,37 +25,6 @@ if (!mid) {
 if (!fs.existsSync(kmlPath)) {
   process.stderr.write('KML file not found: ' + kmlPath + '\n');
   process.exit(1);
-}
-
-async function waitForLayerVisible(page, label, timeoutMs) {
-  if (!label) return false;
-  try {
-    const exact = page.getByText(label, { exact: true }).first();
-    await exact.waitFor({ state: 'visible', timeout: timeoutMs });
-    return true;
-  } catch (_) {}
-  try {
-    const partial = page.getByText(label, { exact: false }).first();
-    await partial.waitFor({ state: 'visible', timeout: Math.min(5000, timeoutMs) });
-    return true;
-  } catch (_) {}
-  return false;
-}
-
-async function findLayerRow(page, label) {
-  if (!label) return null;
-  const selectors = [
-    'div[role="treeitem"]',
-    'div[role="listitem"]',
-    '[class*="layer"]',
-  ];
-  for (const sel of selectors) {
-    try {
-      const row = page.locator(sel).filter({ hasText: label });
-      if (await row.count() > 0) return row.first();
-    } catch (_) {}
-  }
-  return null;
 }
 
 async function main() {
@@ -188,18 +140,13 @@ async function main() {
       await page.getByRole('button', { name: /finish|done|ok/i }).first().click({ timeout: 3000 });
     } catch (_) {}
 
-    const kmlBaseName = path.basename(kmlPath, '.kml');
-    const layerVisible = await waitForLayerVisible(page, kmlBaseName, LAYER_WAIT_MS);
-    if (!layerVisible) {
-      process.stderr.write(`[import] Layer not visible after ${LAYER_WAIT_MS}ms. Continuing without rename/color.\n`);
-    }
-
     // Rename layer if specified
-    if (layerName && layerVisible) {
+    if (layerName) {
       try {
         // Wait for the import to complete
         await browser.thinkDelay();
 
+        const kmlBaseName = path.basename(kmlPath, '.kml');
         process.stderr.write(`[import] Looking for layer to rename (from ${kmlBaseName} to ${layerName})...\n`);
 
         let clicked = false;
@@ -264,79 +211,6 @@ async function main() {
 
       } catch (e) {
         process.stderr.write('[import] Could not rename layer: ' + e.message + '\n');
-      }
-    }
-
-    // Change layer color if colorIndex is provided
-    if (colorIndex >= 0 && layerVisible) {
-      try {
-        await browser.humanDelay(500, 1000);
-        process.stderr.write(`[import] Setting layer color (index ${colorIndex})...\n`);
-
-        await page.keyboard.press('Escape');
-        await browser.clickDelay();
-
-        let styleOpened = false;
-
-        // Prefer the style control within the target layer row
-        let layerLabel = layerName || kmlBaseName;
-        let layerRow = await findLayerRow(page, layerLabel);
-        if (!layerRow && layerLabel !== kmlBaseName) {
-          layerLabel = kmlBaseName;
-          layerRow = await findLayerRow(page, layerLabel);
-        }
-
-        if (layerRow) {
-          try {
-            const rowStyleBtn = layerRow.locator('[aria-label*="style" i], [aria-label*="color" i], [title*="style" i]').first();
-            await browser.clickDelay();
-            await rowStyleBtn.click({ timeout: 3000 });
-            styleOpened = true;
-            process.stderr.write(`[import] Opened style from layer row (${layerLabel})\n`);
-          } catch (_) {}
-        }
-
-        // Try to find and click the style icon
-        if (!styleOpened) {
-          try {
-            const paintIcon = page.locator('[aria-label*="style" i], [aria-label*="color" i], [title*="style" i]').last();
-            await browser.clickDelay();
-            await paintIcon.click({ timeout: 3000 });
-            styleOpened = true;
-          } catch (_) {}
-        }
-
-        if (!styleOpened) {
-          try {
-            const styleText = page.getByText(/individual styles|uniform style/i).first();
-            await browser.clickDelay();
-            await styleText.click({ timeout: 3000 });
-            styleOpened = true;
-          } catch (_) {}
-        }
-
-        if (styleOpened) {
-          await browser.humanDelay(500, 800);
-          const targetColorIndex = colorIndex % GOOGLE_COLORS.length;
-          
-          try {
-            const swatches = page.locator('[class*="swatch"], [class*="color-picker"] *, [class*="palette"] *');
-            const count = await swatches.count();
-            
-            if (count > targetColorIndex) {
-              await browser.clickDelay();
-              await swatches.nth(targetColorIndex).click({ timeout: 2000 });
-              process.stderr.write(`[import] Clicked color swatch ${targetColorIndex}\n`);
-            }
-          } catch (e) {
-            process.stderr.write('[import] Could not click color: ' + e.message + '\n');
-          }
-
-          await page.keyboard.press('Escape');
-        }
-
-      } catch (e) {
-        process.stderr.write('[import] Could not set layer color: ' + e.message + '\n');
       }
     }
 
