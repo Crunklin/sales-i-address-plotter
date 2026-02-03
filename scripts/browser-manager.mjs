@@ -6,7 +6,9 @@
 import { chromium } from 'playwright-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
 
 // Add stealth plugin to avoid detection
 chromium.use(StealthPlugin());
@@ -14,8 +16,39 @@ chromium.use(StealthPlugin());
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 const defaultUserDataDir = process.env.BROWSER_USER_DATA_DIR || path.join(projectRoot, 'playwright-my-maps-profile');
-const LAUNCH_RETRIES = parseInt(process.env.BROWSER_LAUNCH_RETRIES || '5', 10);
-const LAUNCH_RETRY_DELAY_MS = parseInt(process.env.BROWSER_LAUNCH_RETRY_DELAY_MS || '1500', 10);
+const LAUNCH_RETRIES = parseInt(process.env.BROWSER_LAUNCH_RETRIES || '3', 10);
+const LAUNCH_RETRY_DELAY_MS = parseInt(process.env.BROWSER_LAUNCH_RETRY_DELAY_MS || '1000', 10);
+
+/**
+ * Kill any zombie chromium/chrome processes and remove profile lock files.
+ * This ensures a clean slate before launching.
+ */
+function cleanupBrowserProcesses(userDataDir) {
+  // Remove singleton lock files
+  const lockFiles = ['SingletonLock', 'SingletonCookie', 'SingletonSocket'];
+  for (const lockFile of lockFiles) {
+    const lockPath = path.join(userDataDir, lockFile);
+    try {
+      if (fs.existsSync(lockPath)) {
+        fs.unlinkSync(lockPath);
+        process.stderr.write(`[browser] Removed stale lock: ${lockFile}\n`);
+      }
+    } catch (e) {
+      // Ignore - file might be in use
+    }
+  }
+
+  // On Linux/VPS, kill any orphaned chromium processes
+  if (process.platform !== 'win32') {
+    try {
+      // Kill chromium processes that might be holding the profile
+      execSync('pkill -9 -f "chromium.*playwright-my-maps-profile" 2>/dev/null || true', { stdio: 'ignore' });
+      execSync('pkill -9 -f "chrome.*playwright-my-maps-profile" 2>/dev/null || true', { stdio: 'ignore' });
+    } catch (_) {
+      // Ignore errors - processes might not exist
+    }
+  }
+}
 
 let browserContext = null;
 let lastActivity = Date.now();
@@ -93,15 +126,20 @@ export async function getBrowser(userDataDir = defaultUserDataDir) {
     viewport: { width: 1280, height: 900 },
   };
 
+  // Clean up any zombie processes before first attempt
+  cleanupBrowserProcesses(userDataDir);
+
   // Try with Chrome channel first, fall back to bundled Chromium (with retry on profile lock)
-  const maxAttempts = Number.isFinite(LAUNCH_RETRIES) ? Math.max(0, LAUNCH_RETRIES) + 1 : 6;
+  const maxAttempts = Math.max(1, LAUNCH_RETRIES + 1);
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       browserContext = await launchPersistentContextWithFallback(userDataDir, launchOpts);
       return browserContext;
     } catch (e) {
       if (isProcessSingletonError(e) && attempt < maxAttempts) {
-        process.stderr.write(`[browser] Profile locked, retrying (${attempt}/${maxAttempts - 1})...\n`);
+        process.stderr.write(`[browser] Profile locked, cleaning up and retrying (${attempt}/${maxAttempts})...\n`);
+        // More aggressive cleanup on retry
+        cleanupBrowserProcesses(userDataDir);
         await new Promise((r) => setTimeout(r, LAUNCH_RETRY_DELAY_MS));
         continue;
       }
@@ -147,6 +185,17 @@ export async function closeBrowser() {
     }
     browserContext = null;
   }
+  // Also cleanup any orphaned processes
+  cleanupBrowserProcesses(defaultUserDataDir);
+}
+
+/**
+ * Force cleanup - kill processes and remove locks.
+ * Call this when things go wrong.
+ */
+export function forceCleanup(userDataDir = defaultUserDataDir) {
+  browserContext = null;
+  cleanupBrowserProcesses(userDataDir);
 }
 
 /**
@@ -214,6 +263,7 @@ export default {
   getBrowser,
   getPage,
   closeBrowser,
+  forceCleanup,
   checkGoogleSession,
   humanDelay,
   thinkDelay,

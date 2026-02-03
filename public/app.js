@@ -35,6 +35,32 @@ let lastMapBounds = null;
 // Helper to detect session expired and open re-auth page
 function handleError(message) {
   const msg = (message || '').toLowerCase();
+  
+  // Check for browser profile lock errors
+  if (
+    msg.includes('processsingleton') ||
+    msg.includes('profile directory') ||
+    msg.includes('already in use')
+  ) {
+    const doCleanup = confirm(
+      `⚠️ Browser Busy\n\n` +
+      `A previous browser session is still running. This can happen if an operation was interrupted.\n\n` +
+      `Click OK to clean up and try again.`
+    );
+    if (doCleanup) {
+      fetch('/api/browser-cleanup', { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+          alert(data.message || 'Cleanup complete. Please try your operation again.');
+        })
+        .catch(() => {
+          alert('Cleanup failed. Please wait a moment and try again.');
+        });
+    }
+    return true;
+  }
+  
+  // Check for session expired errors
   if (
     msg.includes('session expired') ||
     msg.includes('sign in required') ||

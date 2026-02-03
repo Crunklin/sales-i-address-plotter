@@ -135,6 +135,33 @@ app.post('/api/launch-auth', (req, res) => {
   res.json({ ok: true, message: 'Authentication browser launched. Connect via noVNC to complete login.' });
 });
 
+// Force cleanup of browser processes and locks (emergency reset)
+app.post('/api/browser-cleanup', (req, res) => {
+  try {
+    // Kill any chromium processes holding the profile
+    const { execSync } = require('child_process');
+    const profileDir = path.join(__dirname, 'playwright-my-maps-profile');
+    
+    // Remove lock files
+    ['SingletonLock', 'SingletonCookie', 'SingletonSocket'].forEach(lockFile => {
+      const lockPath = path.join(profileDir, lockFile);
+      try { fs.unlinkSync(lockPath); } catch (_) {}
+    });
+    
+    // Kill orphaned browser processes on Linux
+    if (process.platform !== 'win32') {
+      try {
+        execSync('pkill -9 -f "chromium.*playwright-my-maps-profile" 2>/dev/null || true', { stdio: 'ignore' });
+        execSync('pkill -9 -f "chrome.*playwright-my-maps-profile" 2>/dev/null || true', { stdio: 'ignore' });
+      } catch (_) {}
+    }
+    
+    res.json({ ok: true, message: 'Browser cleanup completed. Try your operation again.' });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 const NOMINATIM_DELAY_MS = 1100; // 1 req/sec (Nominatim usage policy)
 const USER_AGENT = 'AddressPlotter/1.0 (local CSV geocoding tool)';
 const GOOGLE_API_KEY = process.env.GOOGLE_GEOCODING_API_KEY || '';
