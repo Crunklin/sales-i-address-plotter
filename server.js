@@ -16,9 +16,64 @@ const SCRIPTS_DIR = path.join(__dirname, 'scripts');
 const LIST_MYMAPS = path.join(SCRIPTS_DIR, 'list-mymaps.mjs');
 const IMPORT_MYMAPS = path.join(SCRIPTS_DIR, 'import-to-mymaps.mjs');
 const CREATE_MYMAP = path.join(SCRIPTS_DIR, 'create-mymap.mjs');
+const LAUNCH_AUTH_BROWSER = path.join(SCRIPTS_DIR, 'launch-auth-browser.mjs');
 
 // Environment for child processes (Playwright scripts) - inherit DISPLAY and BROWSER_USER_DATA_DIR
 const childEnv = { ...process.env };
+
+// Track if auth browser is currently running
+let authBrowserProcess = null;
+
+/**
+ * Launch a visible browser for Google re-authentication.
+ * Only launches if not already running.
+ */
+function launchAuthBrowser() {
+  // Kill any existing auth browser first
+  if (authBrowserProcess) {
+    try { authBrowserProcess.kill('SIGTERM'); } catch (_) {}
+    authBrowserProcess = null;
+  }
+  
+  console.log('[server] Launching authentication browser...');
+  
+  authBrowserProcess = spawn('node', [LAUNCH_AUTH_BROWSER], {
+    cwd: __dirname,
+    env: childEnv,
+    stdio: ['ignore', 'pipe', 'pipe'],
+    shell: process.platform === 'win32',
+    detached: false,
+  });
+  
+  authBrowserProcess.stdout.on('data', (chunk) => {
+    console.log('[auth-browser]', chunk.toString().trim());
+  });
+  authBrowserProcess.stderr.on('data', (chunk) => {
+    console.error('[auth-browser]', chunk.toString().trim());
+  });
+  authBrowserProcess.on('close', (code) => {
+    console.log(`[server] Auth browser closed with code ${code}`);
+    authBrowserProcess = null;
+  });
+  authBrowserProcess.on('error', (err) => {
+    console.error('[server] Auth browser error:', err.message);
+    authBrowserProcess = null;
+  });
+}
+
+/**
+ * Check if error message indicates Google session expiry.
+ */
+function isSessionExpiredError(errorMsg) {
+  if (!errorMsg) return false;
+  const lower = errorMsg.toLowerCase();
+  return (
+    lower.includes('session expired') ||
+    lower.includes('sign in required') ||
+    lower.includes('verify it') ||
+    lower.includes('re-authenticate')
+  );
+}
 
 const SHARED_SECRET = process.env.SHARED_SECRET || '';
 const AUTH_COOKIE = 'address-plotter-auth';
@@ -70,6 +125,12 @@ app.post('/api/login', express.json(), (req, res) => {
 // Config for frontend (e.g. hide My Maps automation when not available)
 app.get('/api/config', (req, res) => {
   res.json({ automationAvailable: true });
+});
+
+// Launch authentication browser (for manual re-auth or debugging)
+app.post('/api/launch-auth', (req, res) => {
+  launchAuthBrowser();
+  res.json({ ok: true, message: 'Authentication browser launched. Connect via noVNC to complete login.' });
 });
 
 const NOMINATIM_DELAY_MS = 1100; // 1 req/sec (Nominatim usage policy)
@@ -237,6 +298,10 @@ app.get('/api/mymaps-list', (req, res) => {
     if (responded) return;
     if (code !== 0) {
       const msg = stderr?.trim() || 'Failed to list maps';
+      // Check if this is a session expiry - launch auth browser
+      if (isSessionExpiredError(msg) || isSessionExpiredError(stdout)) {
+        launchAuthBrowser();
+      }
       const hint = ' You can enter your map ID manually below (from the My Maps URL: .../edit?mid=XXXXX).';
       return respond({ error: msg + hint, maps: [] }, true);
     }
@@ -288,7 +353,12 @@ app.post('/api/mymaps-create', (req, res) => {
   child.on('close', (code) => {
     if (responded) return;
     if (code !== 0) {
-      return respond({ error: stderr?.trim() || 'Failed to create map' }, true);
+      const msg = stderr?.trim() || 'Failed to create map';
+      // Check if this is a session expiry - launch auth browser
+      if (isSessionExpiredError(msg)) {
+        launchAuthBrowser();
+      }
+      return respond({ error: msg }, true);
     }
     // Script outputs JSON with { mid, title }
     const lines = stdout.trim().split('\n').filter((s) => s.trim().startsWith('{'));
@@ -323,7 +393,12 @@ app.post('/api/mymaps-import', (req, res) => {
   child.stderr.on('data', (chunk) => { stderr += chunk; });
   child.on('close', (code) => {
     if (code !== 0) {
-      return res.status(500).json({ error: stderr || 'Import failed' });
+      const msg = stderr || 'Import failed';
+      // Check if this is a session expiry - launch auth browser
+      if (isSessionExpiredError(msg)) {
+        launchAuthBrowser();
+      }
+      return res.status(500).json({ error: msg });
     }
     res.json({ ok: true });
   });
