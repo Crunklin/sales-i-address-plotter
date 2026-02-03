@@ -456,6 +456,8 @@ async function importAllSheetsToMap(mid) {
     const sheet = selected[i];
     // Use the per-sheet layerName (editable in the sheets list)
     const layerName = sheet.layerName.trim() || sheet.filename.replace(/\.csv$/i, '');
+    // Get the color index based on original sheet position (to match preview colors)
+    const colorIndex = sheets.indexOf(sheet);
     
     mymapsStatus.textContent = `Importing layer ${i + 1}/${selected.length}: ${layerName}…`;
     
@@ -470,11 +472,11 @@ async function importAllSheetsToMap(mid) {
       let data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save KML');
       
-      // Import to map
+      // Import to map with color index for different colored pins
       res = await fetch('/api/mymaps-import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mid, layerName }),
+        body: JSON.stringify({ mid, layerName, colorIndex }),
       });
       data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Import failed');

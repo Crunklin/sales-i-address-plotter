@@ -307,12 +307,12 @@ app.post('/api/mymaps-create', (req, res) => {
 
 // Run import-to-mymaps script with chosen map ID. Browser will open and import.
 app.post('/api/mymaps-import', (req, res) => {
-  const { mid, layerName } = req.body || {};
+  const { mid, layerName, colorIndex } = req.body || {};
   if (!mid || typeof mid !== 'string') return res.status(400).json({ error: 'Missing map id (mid)' });
   if (!fs.existsSync(EXPORT_KML_PATH)) return res.status(400).json({ error: 'KML not saved. Click "Add to Google My Maps" first.' });
 
-  const args = [IMPORT_MYMAPS, mid];
-  if (layerName && typeof layerName === 'string') args.push(EXPORT_KML_PATH, layerName);
+  // Args: mid, kmlPath, layerName, colorIndex
+  const args = [IMPORT_MYMAPS, mid, EXPORT_KML_PATH, layerName || '', String(colorIndex ?? 0)];
   const child = spawn('node', args, {
     cwd: __dirname,
     env: childEnv,

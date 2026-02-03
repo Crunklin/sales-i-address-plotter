@@ -2,7 +2,7 @@
 /**
  * Add a new layer to a specific My Map and import the KML file.
  * Used by the app after user picks a map in the UI.
- * Usage: node scripts/import-to-mymaps.mjs <mid> [kmlPath] [layerName]
+ * Usage: node scripts/import-to-mymaps.mjs <mid> [kmlPath] [layerName] [colorIndex]
  */
 
 import { chromium } from 'playwright';
@@ -19,6 +19,21 @@ const defaultKmlPath = path.join(projectRoot, 'address-plotter-export.kml');
 const mid = process.argv[2];
 const kmlPath = process.argv[3] ? path.resolve(process.cwd(), process.argv[3]) : defaultKmlPath;
 const layerName = process.argv[4] || '';
+const colorIndex = parseInt(process.argv[5] || '0', 10);
+
+// Google My Maps color names (in order they appear in the palette)
+const GOOGLE_COLORS = [
+  'Blue',      // 0
+  'Red',       // 1
+  'Green',     // 2
+  'Yellow',    // 3
+  'Purple',    // 4
+  'Pink',      // 5
+  'Cyan',      // 6
+  'Orange',    // 7
+  'Light Green', // 8
+  'Brown',     // 9
+];
 
 if (!mid) {
   process.stderr.write('Usage: node scripts/import-to-mymaps.mjs <mid> [kmlPath] [layerName]\n');
@@ -167,6 +182,94 @@ async function main() {
 
     } catch (e) {
       process.stderr.write('[import] Could not rename layer: ' + e.message + '\n');
+    }
+  }
+
+  // Change layer color if colorIndex is provided
+  if (colorIndex >= 0) {
+    try {
+      await page.waitForTimeout(500);
+      process.stderr.write(`[import] Setting layer color (index ${colorIndex})...\n`);
+
+      // Click somewhere neutral first to deselect any text
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(200);
+
+      // Find the paint bucket / style icon for the most recently added layer
+      // It's usually in the layer header area - look for it by various means
+      let styleOpened = false;
+
+      // Method 1: Look for paint bucket icon by aria-label or title
+      try {
+        const paintIcon = page.locator('[aria-label*="style" i], [aria-label*="color" i], [title*="style" i], [title*="color" i], [data-tooltip*="style" i]').last();
+        await paintIcon.click({ timeout: 3000 });
+        styleOpened = true;
+        process.stderr.write('[import] Clicked style icon by aria-label\n');
+      } catch (_) {}
+
+      // Method 2: Look for the paint bucket SVG icon in layer headers
+      if (!styleOpened) {
+        try {
+          // The style button is often a small icon button in the layer header
+          const layerHeaders = page.locator('[class*="layer"]');
+          const lastHeader = layerHeaders.last();
+          const styleBtn = lastHeader.locator('button, [role="button"]').last();
+          await styleBtn.click({ timeout: 3000 });
+          styleOpened = true;
+          process.stderr.write('[import] Clicked button in layer header\n');
+        } catch (_) {}
+      }
+
+      // Method 3: Click "Individual styles" or "Uniform style" text if visible
+      if (!styleOpened) {
+        try {
+          const styleText = page.getByText(/individual styles|uniform style|set labels/i).first();
+          await styleText.click({ timeout: 3000 });
+          styleOpened = true;
+          process.stderr.write('[import] Clicked style text\n');
+        } catch (_) {}
+      }
+
+      if (styleOpened) {
+        await page.waitForTimeout(500);
+
+        // Now click on a color in the palette
+        // Google's color palette shows colored circles/squares
+        const targetColorIndex = colorIndex % GOOGLE_COLORS.length;
+        
+        // Try to find color elements in the style panel
+        try {
+          // Look for color swatches (usually small colored elements)
+          const colorSwatches = page.locator('[class*="color"], [style*="background"], [data-color]').filter({ 
+            has: page.locator(':scope:not(:has(*))') // Leaf elements (no children)
+          });
+          
+          // Try clicking by position in the color palette
+          const swatches = page.locator('[class*="swatch"], [class*="color-picker"] *, [class*="palette"] *');
+          const count = await swatches.count();
+          
+          if (count > targetColorIndex) {
+            await swatches.nth(targetColorIndex).click({ timeout: 2000 });
+            process.stderr.write(`[import] Clicked color swatch ${targetColorIndex}\n`);
+          } else {
+            // Fallback: click any visible colored element
+            const anyColor = page.locator('[style*="background-color"]').nth(targetColorIndex % Math.max(1, count));
+            await anyColor.click({ timeout: 2000 });
+            process.stderr.write('[import] Clicked fallback color element\n');
+          }
+        } catch (e) {
+          process.stderr.write('[import] Could not click color: ' + e.message + '\n');
+        }
+
+        // Close the style panel
+        await page.keyboard.press('Escape');
+        await page.waitForTimeout(200);
+      } else {
+        process.stderr.write('[import] Could not open style panel\n');
+      }
+
+    } catch (e) {
+      process.stderr.write('[import] Could not set layer color: ' + e.message + '\n');
     }
   }
 
