@@ -6,10 +6,13 @@
   <title>Sales-i Address Plotter — Sign in</title>
   <link rel="stylesheet" href="style.css" />
   <style>
+    body { background: #0f0f12; color: #e4e4e7; min-height: 100vh; }
     .login-box { max-width: 360px; margin: 3rem auto; padding: 2rem; background: #18181b; border-radius: 8px; border: 1px solid #3f3f46; }
-    .login-box h2 { margin: 0 0 1rem 0; font-size: 1.25rem; }
+    .login-box h2 { margin: 0 0 1rem 0; font-size: 1.25rem; color: #f4f4f5; }
     .login-box input { width: 100%; padding: 0.6rem; margin-bottom: 1rem; background: #27272a; border: 1px solid #3f3f46; border-radius: 6px; color: #e4e4e7; font-size: 1rem; }
-    .login-box button { width: 100%; padding: 0.6rem; cursor: pointer; }
+    .login-box input::placeholder { color: #71717a; }
+    .login-box button { width: 100%; padding: 0.6rem 1rem; cursor: pointer; background: #3b82f6; color: #fff; border: none; border-radius: 6px; font-size: 1rem; font-weight: 500; }
+    .login-box button:hover { background: #2563eb; }
     .login-error { color: #f87171; font-size: 0.9rem; margin-top: 0.5rem; }
   </style>
 </head>
