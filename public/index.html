@@ -8,6 +8,12 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <!-- User info bar (populated by JS if logged in) -->
+  <div id="userBar" class="user-bar hidden">
+    <span id="userName"></span>
+    <button type="button" id="logoutBtn" class="logout-btn">Sign out</button>
+  </div>
+  
   <header>
     <h1>Sales-i Address Plotter</h1>
     <p>Stop wasting time cleaning up Sales-i exports by hand. Drop your CSV here, and we'll scrub the addresses, find the coordinates, and push everything straight to Google My Maps in just a few clicks.</p>

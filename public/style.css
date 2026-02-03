@@ -455,3 +455,38 @@ tr:hover td {
   color: #a1a1aa;
   font-size: 0.8rem;
 }
+
+/* User bar */
+.user-bar {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid #27272a;
+  font-size: 0.85rem;
+}
+
+.user-bar #userName {
+  color: #a1a1aa;
+}
+
+.user-bar #userName::before {
+  content: "Signed in as: ";
+}
+
+.logout-btn {
+  background: transparent;
+  border: 1px solid #3f3f46;
+  color: #a1a1aa;
+  padding: 0.3rem 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.logout-btn:hover {
+  background: #27272a;
+  color: #e4e4e7;
+}

@@ -1,5 +1,7 @@
 node_modules/
 playwright-my-maps-profile/
+profiles/
+new-google-profile/
 address-plotter-export.kml
 .env
 .env.deploy

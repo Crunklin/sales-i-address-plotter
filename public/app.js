@@ -24,6 +24,9 @@ const confirmCreateMapBtn = document.getElementById('confirmCreateMapBtn');
 const mymapsPreview = document.getElementById('mymapsPreview');
 const mymapsIframe = document.getElementById('mymapsIframe');
 const openMapLink = document.getElementById('openMapLink');
+const userBar = document.getElementById('userBar');
+const userNameEl = document.getElementById('userName');
+const logoutBtn = document.getElementById('logoutBtn');
 
 let currentMapId = null;
 let sheets = []; // Array of { filename, headers, rows, geocodedRows, selected, layerName }
@@ -31,6 +34,38 @@ let activeSheetIndex = 0; // Which sheet is being viewed
 let mapInstance = null;
 let mapMarkers = [];
 let lastMapBounds = null;
+let currentUser = null; // Currently logged in user
+
+// Load current user info on page load
+async function loadCurrentUser() {
+  try {
+    const res = await fetch('/api/me');
+    const data = await res.json();
+    if (data.user) {
+      currentUser = data.user;
+      userNameEl.textContent = data.user.name;
+      userBar.classList.remove('hidden');
+    }
+  } catch (e) {
+    // Not logged in or error - hide user bar
+    userBar.classList.add('hidden');
+  }
+}
+
+// Logout handler
+if (logoutBtn) {
+  logoutBtn.addEventListener('click', async () => {
+    try {
+      await fetch('/api/logout', { method: 'POST' });
+    } catch (e) {
+      // Ignore errors
+    }
+    window.location.href = '/login.html';
+  });
+}
+
+// Initialize user info
+loadCurrentUser();
 
 // Helper to detect session expired and open re-auth page
 function handleError(message) {

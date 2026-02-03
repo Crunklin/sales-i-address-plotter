@@ -2,7 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import multer from 'multer';
 import fs from 'fs';
-import { spawn } from 'child_process';
+import { spawn, execSync } from 'child_process';
 import crypto from 'crypto';
 import { parse } from 'csv-parse/sync';
 import fetch from 'node-fetch';
@@ -18,8 +18,13 @@ const IMPORT_MYMAPS = path.join(SCRIPTS_DIR, 'import-to-mymaps.mjs');
 const CREATE_MYMAP = path.join(SCRIPTS_DIR, 'create-mymap.mjs');
 const LAUNCH_AUTH_BROWSER = path.join(SCRIPTS_DIR, 'launch-auth-browser.mjs');
 
-// Environment for child processes (Playwright scripts) - inherit DISPLAY and BROWSER_USER_DATA_DIR
-const childEnv = { ...process.env };
+// Get environment for child processes with user-specific profile directory
+function getChildEnv(userProfileDir) {
+  return {
+    ...process.env,
+    BROWSER_USER_DATA_DIR: userProfileDir,
+  };
+}
 
 const MYMAPS_IMPORT_TIMEOUT_MS = parseInt(process.env.MYMAPS_IMPORT_TIMEOUT_MS || '300000', 10);
 
@@ -29,19 +34,20 @@ let authBrowserProcess = null;
 /**
  * Launch a visible browser for Google re-authentication.
  * Only launches if not already running.
+ * @param {string} userProfileDir - The profile directory for this user
  */
-function launchAuthBrowser() {
+function launchAuthBrowser(userProfileDir) {
   // Kill any existing auth browser first
   if (authBrowserProcess) {
     try { authBrowserProcess.kill('SIGTERM'); } catch (_) {}
     authBrowserProcess = null;
   }
   
-  console.log('[server] Launching authentication browser...');
+  console.log('[server] Launching authentication browser for profile:', userProfileDir);
   
   authBrowserProcess = spawn('node', [LAUNCH_AUTH_BROWSER], {
     cwd: __dirname,
-    env: childEnv,
+    env: getChildEnv(userProfileDir),
     stdio: ['ignore', 'pipe', 'pipe'],
     shell: process.platform === 'win32',
     detached: false,
@@ -77,11 +83,50 @@ function isSessionExpiredError(errorMsg) {
   );
 }
 
+// ========== Multi-User Configuration ==========
+const APP_USERS_RAW = process.env.APP_USERS || '';
 const SHARED_SECRET = process.env.SHARED_SECRET || '';
 const AUTH_COOKIE = 'address-plotter-auth';
+const USER_COOKIE = 'address-plotter-user';
+const PROFILES_BASE_DIR = process.env.PROFILES_BASE_DIR || path.join(__dirname, 'profiles');
+
+// Parse users from JSON env var
+let APP_USERS = [];
+try {
+  if (APP_USERS_RAW) {
+    APP_USERS = JSON.parse(APP_USERS_RAW);
+    if (!Array.isArray(APP_USERS)) APP_USERS = [];
+    // Validate each user has id, name, pin
+    APP_USERS = APP_USERS.filter(u => u.id && u.name && u.pin);
+    console.log(`[server] Loaded ${APP_USERS.length} users from APP_USERS`);
+  }
+} catch (e) {
+  console.error('[server] Failed to parse APP_USERS:', e.message);
+  APP_USERS = [];
+}
+
+// Multi-user mode is enabled if APP_USERS has entries
+const MULTI_USER_MODE = APP_USERS.length > 0;
+
+// Legacy single-user token (fallback when no APP_USERS)
 const AUTH_TOKEN = SHARED_SECRET
   ? crypto.createHmac('sha256', SHARED_SECRET).update('login').digest('hex')
   : '';
+
+// Generate per-user auth tokens
+function getUserToken(userId) {
+  return crypto.createHmac('sha256', userId + '-address-plotter').update('auth').digest('hex');
+}
+
+// Get user by ID
+function getUserById(userId) {
+  return APP_USERS.find(u => u.id === userId) || null;
+}
+
+// Get profile directory for a user
+function getUserProfileDir(userId) {
+  return path.join(PROFILES_BASE_DIR, userId);
+}
 
 function parseCookies(cookieHeader) {
   if (!cookieHeader) return {};
@@ -94,11 +139,39 @@ function parseCookies(cookieHeader) {
 }
 
 function requireAuth(req, res, next) {
-  if (!SHARED_SECRET) return next();
   const cookies = parseCookies(req.headers.cookie);
-  if (cookies[AUTH_COOKIE] === AUTH_TOKEN) return next();
-  if (req.path === '/login' || req.path === '/login.html' || req.path.startsWith('/api/login')) return next();
-  if (req.method === 'POST' && req.path === '/api/login') return next();
+  
+  // Allow login and user list endpoints without auth
+  const publicPaths = ['/login', '/login.html', '/api/login', '/api/users'];
+  if (publicPaths.some(p => req.path === p || req.path.startsWith(p + '/'))) return next();
+  
+  if (MULTI_USER_MODE) {
+    // Multi-user mode: check user cookie + token
+    const userId = cookies[USER_COOKIE];
+    const authToken = cookies[AUTH_COOKIE];
+    const user = getUserById(userId);
+    
+    if (user && authToken === getUserToken(userId)) {
+      // Attach user to request for downstream use
+      req.user = user;
+      req.userProfileDir = getUserProfileDir(userId);
+      return next();
+    }
+  } else if (SHARED_SECRET) {
+    // Legacy single-user mode
+    if (cookies[AUTH_COOKIE] === AUTH_TOKEN) {
+      req.user = null; // No user in legacy mode
+      req.userProfileDir = process.env.BROWSER_USER_DATA_DIR || path.join(__dirname, 'playwright-my-maps-profile');
+      return next();
+    }
+  } else {
+    // No auth configured - allow all (local dev)
+    req.user = null;
+    req.userProfileDir = process.env.BROWSER_USER_DATA_DIR || path.join(__dirname, 'playwright-my-maps-profile');
+    return next();
+  }
+  
+  // Not authenticated
   if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'Unauthorized' });
   return res.redirect('/login.html');
 }
@@ -110,18 +183,68 @@ app.use(requireAuth);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Login: POST /api/login { secret: "..." }
+// Get available users (for login dropdown) - returns names only, not PINs
+app.get('/api/users', (req, res) => {
+  if (MULTI_USER_MODE) {
+    const users = APP_USERS.map(u => ({ id: u.id, name: u.name }));
+    res.json({ multiUser: true, users });
+  } else {
+    res.json({ multiUser: false, users: [] });
+  }
+});
+
+// Login: POST /api/login { userId, pin } for multi-user, or { secret } for legacy
 app.post('/api/login', express.json(), (req, res) => {
-  const secret = (req.body && req.body.secret) || '';
-  if (!SHARED_SECRET) return res.status(400).json({ error: 'Auth not configured' });
-  if (secret !== SHARED_SECRET) return res.status(401).json({ error: 'Invalid secret' });
-  res.cookie(AUTH_COOKIE, AUTH_TOKEN, {
-    httpOnly: true,
-    sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60 * 1000,
-    path: '/',
-  });
+  if (MULTI_USER_MODE) {
+    // Multi-user login
+    const { userId, pin } = req.body || {};
+    if (!userId || !pin) {
+      return res.status(400).json({ error: 'Missing userId or pin' });
+    }
+    const user = getUserById(userId);
+    if (!user || user.pin !== pin) {
+      return res.status(401).json({ error: 'Invalid credentials' });
+    }
+    
+    // Set both user ID and auth token cookies
+    const cookieOpts = {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/',
+    };
+    res.cookie(USER_COOKIE, user.id, cookieOpts);
+    res.cookie(AUTH_COOKIE, getUserToken(user.id), cookieOpts);
+    res.json({ ok: true, user: { id: user.id, name: user.name } });
+  } else {
+    // Legacy single-user login
+    const secret = (req.body && req.body.secret) || '';
+    if (!SHARED_SECRET) return res.status(400).json({ error: 'Auth not configured' });
+    if (secret !== SHARED_SECRET) return res.status(401).json({ error: 'Invalid secret' });
+    res.cookie(AUTH_COOKIE, AUTH_TOKEN, {
+      httpOnly: true,
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/',
+    });
+    res.json({ ok: true });
+  }
+});
+
+// Logout: POST /api/logout
+app.post('/api/logout', (req, res) => {
+  res.clearCookie(AUTH_COOKIE, { path: '/' });
+  res.clearCookie(USER_COOKIE, { path: '/' });
   res.json({ ok: true });
+});
+
+// Get current user info (for frontend display)
+app.get('/api/me', (req, res) => {
+  if (req.user) {
+    res.json({ user: { id: req.user.id, name: req.user.name } });
+  } else {
+    res.json({ user: null });
+  }
 });
 
 // Config for frontend (e.g. hide My Maps automation when not available)
@@ -131,16 +254,15 @@ app.get('/api/config', (req, res) => {
 
 // Launch authentication browser (for manual re-auth or debugging)
 app.post('/api/launch-auth', (req, res) => {
-  launchAuthBrowser();
+  const profileDir = req.userProfileDir || path.join(__dirname, 'playwright-my-maps-profile');
+  launchAuthBrowser(profileDir);
   res.json({ ok: true, message: 'Authentication browser launched. Connect via noVNC to complete login.' });
 });
 
 // Force cleanup of browser processes and locks (emergency reset)
 app.post('/api/browser-cleanup', (req, res) => {
   try {
-    // Kill any chromium processes holding the profile
-    const { execSync } = require('child_process');
-    const profileDir = path.join(__dirname, 'playwright-my-maps-profile');
+    const profileDir = req.userProfileDir || path.join(__dirname, 'playwright-my-maps-profile');
     
     // Remove lock files
     ['SingletonLock', 'SingletonCookie', 'SingletonSocket'].forEach(lockFile => {
@@ -148,11 +270,12 @@ app.post('/api/browser-cleanup', (req, res) => {
       try { fs.unlinkSync(lockPath); } catch (_) {}
     });
     
-    // Kill orphaned browser processes on Linux
+    // Kill orphaned browser processes on Linux (for user's profile)
     if (process.platform !== 'win32') {
+      const profileName = path.basename(profileDir);
       try {
-        execSync('pkill -9 -f "chromium.*playwright-my-maps-profile" 2>/dev/null || true', { stdio: 'ignore' });
-        execSync('pkill -9 -f "chrome.*playwright-my-maps-profile" 2>/dev/null || true', { stdio: 'ignore' });
+        execSync(`pkill -9 -f "chromium.*${profileName}" 2>/dev/null || true`, { stdio: 'ignore' });
+        execSync(`pkill -9 -f "chrome.*${profileName}" 2>/dev/null || true`, { stdio: 'ignore' });
       } catch (_) {}
     }
     
@@ -306,9 +429,10 @@ app.post('/api/clean-and-geocode', async (req, res) => {
 
 // Run list-mymaps script and return map list (for in-app picker). Browser will open briefly.
 app.get('/api/mymaps-list', (req, res) => {
+  const userProfileDir = req.userProfileDir;
   const child = spawn('node', [LIST_MYMAPS], {
     cwd: __dirname,
-    env: childEnv,
+    env: getChildEnv(userProfileDir),
     stdio: ['ignore', 'pipe', 'pipe'],
     shell: process.platform === 'win32',
   });
@@ -329,7 +453,7 @@ app.get('/api/mymaps-list', (req, res) => {
       const msg = stderr?.trim() || 'Failed to list maps';
       // Check if this is a session expiry - launch auth browser
       if (isSessionExpiredError(msg) || isSessionExpiredError(stdout)) {
-        launchAuthBrowser();
+        launchAuthBrowser(userProfileDir);
       }
       const hint = ' You can enter your map ID manually below (from the My Maps URL: .../edit?mid=XXXXX).';
       return respond({ error: msg + hint, maps: [] }, true);
@@ -359,10 +483,11 @@ app.get('/api/mymaps-list', (req, res) => {
 app.post('/api/mymaps-create', (req, res) => {
   const { name } = req.body || {};
   const mapName = (name && typeof name === 'string') ? name : 'Untitled map';
+  const userProfileDir = req.userProfileDir;
 
   const child = spawn('node', [CREATE_MYMAP, mapName], {
     cwd: __dirname,
-    env: childEnv,
+    env: getChildEnv(userProfileDir),
     stdio: ['ignore', 'pipe', 'pipe'],
     shell: process.platform === 'win32',
   });
@@ -385,7 +510,7 @@ app.post('/api/mymaps-create', (req, res) => {
       const msg = stderr?.trim() || 'Failed to create map';
       // Check if this is a session expiry - launch auth browser
       if (isSessionExpiredError(msg)) {
-        launchAuthBrowser();
+        launchAuthBrowser(userProfileDir);
       }
       return respond({ error: msg }, true);
     }
@@ -407,6 +532,7 @@ app.post('/api/mymaps-create', (req, res) => {
 // Run import-to-mymaps script with chosen map ID. Browser will open and import.
 app.post('/api/mymaps-import', (req, res) => {
   const { mid, layerName } = req.body || {};
+  const userProfileDir = req.userProfileDir;
   if (!mid || typeof mid !== 'string') return res.status(400).json({ error: 'Missing map id (mid)' });
   if (!fs.existsSync(EXPORT_KML_PATH)) return res.status(400).json({ error: 'KML not saved. Click "Add to Google My Maps" first.' });
 
@@ -414,7 +540,7 @@ app.post('/api/mymaps-import', (req, res) => {
   const args = [IMPORT_MYMAPS, mid, EXPORT_KML_PATH, layerName || ''];
   const child = spawn('node', args, {
     cwd: __dirname,
-    env: childEnv,
+    env: getChildEnv(userProfileDir),
     stdio: ['ignore', 'pipe', 'pipe'],
     shell: process.platform === 'win32',
   });
@@ -425,7 +551,7 @@ app.post('/api/mymaps-import', (req, res) => {
       const msg = stderr || 'Import failed';
       // Check if this is a session expiry - launch auth browser
       if (isSessionExpiredError(msg)) {
-        launchAuthBrowser();
+        launchAuthBrowser(userProfileDir);
       }
       return res.status(500).json({ error: msg });
     }

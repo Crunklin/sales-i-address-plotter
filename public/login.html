@@ -8,27 +8,127 @@
   <style>
     .login-box { max-width: 360px; margin: 3rem auto; padding: 2rem; background: #18181b; border-radius: 8px; border: 1px solid #3f3f46; }
     .login-box h2 { margin: 0 0 1rem 0; font-size: 1.25rem; }
-    .login-box input { width: 100%; padding: 0.6rem; margin-bottom: 1rem; background: #27272a; border: 1px solid #3f3f46; border-radius: 6px; color: #e4e4e7; font-size: 1rem; }
+    .login-box input, .login-box select { width: 100%; padding: 0.6rem; margin-bottom: 1rem; background: #27272a; border: 1px solid #3f3f46; border-radius: 6px; color: #e4e4e7; font-size: 1rem; }
+    .login-box select { cursor: pointer; }
+    .login-box select option { background: #27272a; color: #e4e4e7; }
     .login-box button { width: 100%; padding: 0.6rem; cursor: pointer; }
     .login-error { color: #f87171; font-size: 0.9rem; margin-top: 0.5rem; }
+    .hidden { display: none !important; }
+    .loading { text-align: center; color: #a1a1aa; padding: 2rem; }
   </style>
 </head>
 <body>
   <div class="login-box">
     <h2>Sales-i Address Plotter</h2>
-    <p style="color:#a1a1aa; margin:0 0 1rem 0; font-size:0.9rem;">Enter the shared secret to continue.</p>
-    <form id="loginForm">
-      <input type="password" id="secret" placeholder="Shared secret" autocomplete="off" required />
-      <button type="submit">Sign in</button>
-    </form>
+    
+    <!-- Loading state -->
+    <div id="loadingState" class="loading">Loading...</div>
+    
+    <!-- Multi-user login form -->
+    <div id="multiUserForm" class="hidden">
+      <p style="color:#a1a1aa; margin:0 0 1rem 0; font-size:0.9rem;">Select your profile and enter your PIN.</p>
+      <form id="loginFormMulti">
+        <select id="userSelect" required>
+          <option value="">Select user...</option>
+        </select>
+        <input type="password" id="pin" placeholder="PIN" autocomplete="off" required maxlength="10" />
+        <button type="submit">Sign in</button>
+      </form>
+    </div>
+    
+    <!-- Legacy single-user login form -->
+    <div id="legacyForm" class="hidden">
+      <p style="color:#a1a1aa; margin:0 0 1rem 0; font-size:0.9rem;">Enter the shared secret to continue.</p>
+      <form id="loginFormLegacy">
+        <input type="password" id="secret" placeholder="Shared secret" autocomplete="off" required />
+        <button type="submit">Sign in</button>
+      </form>
+    </div>
+    
     <p id="error" class="login-error hidden"></p>
   </div>
+  
   <script>
-    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    const loadingEl = document.getElementById('loadingState');
+    const multiUserEl = document.getElementById('multiUserForm');
+    const legacyEl = document.getElementById('legacyForm');
+    const errorEl = document.getElementById('error');
+    
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.classList.remove('hidden');
+    }
+    
+    function hideError() {
+      errorEl.classList.add('hidden');
+    }
+    
+    // Fetch users to determine login mode
+    async function init() {
+      try {
+        const res = await fetch('/api/users');
+        const data = await res.json();
+        
+        loadingEl.classList.add('hidden');
+        
+        if (data.multiUser && data.users && data.users.length > 0) {
+          // Multi-user mode
+          const select = document.getElementById('userSelect');
+          data.users.forEach(user => {
+            const opt = document.createElement('option');
+            opt.value = user.id;
+            opt.textContent = user.name;
+            select.appendChild(opt);
+          });
+          multiUserEl.classList.remove('hidden');
+        } else {
+          // Legacy single-user mode
+          legacyEl.classList.remove('hidden');
+        }
+      } catch (e) {
+        loadingEl.classList.add('hidden');
+        legacyEl.classList.remove('hidden');
+        showError('Could not load user list. Using legacy login.');
+      }
+    }
+    
+    // Multi-user login
+    document.getElementById('loginFormMulti').addEventListener('submit', async (e) => {
       e.preventDefault();
+      hideError();
+      
+      const userId = document.getElementById('userSelect').value;
+      const pin = document.getElementById('pin').value.trim();
+      
+      if (!userId) {
+        showError('Please select a user');
+        return;
+      }
+      
+      try {
+        const res = await fetch('/api/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, pin }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          showError(data.error || 'Sign in failed');
+          return;
+        }
+        window.location.href = '/';
+      } catch (e) {
+        showError('Network error');
+      }
+    });
+    
+    // Legacy login
+    document.getElementById('loginFormLegacy').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      hideError();
+      
       const secret = document.getElementById('secret').value.trim();
-      const errEl = document.getElementById('error');
-      errEl.classList.add('hidden');
+      
       try {
         const res = await fetch('/api/login', {
           method: 'POST',
@@ -37,16 +137,17 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          errEl.textContent = data.error || 'Sign in failed';
-          errEl.classList.remove('hidden');
+          showError(data.error || 'Sign in failed');
           return;
         }
         window.location.href = '/';
       } catch (e) {
-        errEl.textContent = 'Network error';
-        errEl.classList.remove('hidden');
+        showError('Network error');
       }
     });
+    
+    // Initialize on load
+    init();
   </script>
 </body>
 </html>

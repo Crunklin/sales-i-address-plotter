@@ -38,12 +38,13 @@ function cleanupBrowserProcesses(userDataDir) {
     }
   }
 
-  // On Linux/VPS, kill any orphaned chromium processes
+  // On Linux/VPS, kill any orphaned chromium processes for this profile
   if (process.platform !== 'win32') {
+    const profileName = path.basename(userDataDir);
     try {
-      // Kill chromium processes that might be holding the profile
-      execSync('pkill -9 -f "chromium.*playwright-my-maps-profile" 2>/dev/null || true', { stdio: 'ignore' });
-      execSync('pkill -9 -f "chrome.*playwright-my-maps-profile" 2>/dev/null || true', { stdio: 'ignore' });
+      // Kill chromium processes that might be holding this specific profile
+      execSync(`pkill -9 -f "chromium.*${profileName}" 2>/dev/null || true`, { stdio: 'ignore' });
+      execSync(`pkill -9 -f "chrome.*${profileName}" 2>/dev/null || true`, { stdio: 'ignore' });
     } catch (_) {
       // Ignore errors - processes might not exist
     }
