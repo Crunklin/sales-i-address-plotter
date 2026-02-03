@@ -66,6 +66,19 @@ async function main() {
   // Wait for page to fully load
   await page.waitForTimeout(2000);
 
+  // Check if we hit a Google sign-in/verification page
+  const currentUrl = page.url();
+  const pageContent = await page.content();
+  if (
+    currentUrl.includes('accounts.google.com') ||
+    currentUrl.includes('/signin') ||
+    pageContent.includes('Verify it') ||
+    pageContent.includes('Sign in') ||
+    pageContent.includes('sign in again')
+  ) {
+    throw new Error('Google session expired. Please re-authenticate via VNC on the VPS and try again.');
+  }
+
   // Click "Add layer" - try multiple methods with longer timeouts
   let addedLayer = false;
   

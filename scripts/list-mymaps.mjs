@@ -229,6 +229,24 @@ async function main() {
 
   const navTimeout = isVps ? 60000 : 30000;
   await page.goto('https://www.google.com/maps/d/', { waitUntil: 'domcontentloaded', timeout: navTimeout });
+  
+  // Check if we hit a Google sign-in/verification page
+  await page.waitForTimeout(1000);
+  const currentUrl = page.url();
+  const pageContent = await page.content();
+  if (
+    currentUrl.includes('accounts.google.com') ||
+    currentUrl.includes('/signin') ||
+    pageContent.includes('Verify it') ||
+    pageContent.includes('Sign in') ||
+    pageContent.includes('sign in again')
+  ) {
+    await context.close();
+    process.stderr.write('[list-mymaps] Google session expired. Please re-authenticate via VNC.\n');
+    console.log(JSON.stringify({ error: 'Google session expired. Please re-authenticate via VNC on the VPS and try again.' }));
+    process.exit(1);
+  }
+
   // Maplist comes from XHR; poll and exit as soon as we have maps (VPS is slower)
   const pollMs = isVps ? 600 : 400;
   const pollMax = isVps ? 20000 : 8000;

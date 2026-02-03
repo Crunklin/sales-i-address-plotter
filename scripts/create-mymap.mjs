@@ -46,7 +46,21 @@ async function main() {
 
   // Go to My Maps home (where "Create a new map" button is)
   await page.goto('https://www.google.com/maps/d/u/0/', { waitUntil: 'load', timeout: navTimeout });
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(1500);
+
+  // Check if we hit a Google sign-in/verification page
+  const currentUrl = page.url();
+  const pageContent = await page.content();
+  if (
+    currentUrl.includes('accounts.google.com') ||
+    currentUrl.includes('/signin') ||
+    pageContent.includes('Verify it') ||
+    pageContent.includes('Sign in') ||
+    pageContent.includes('sign in again')
+  ) {
+    await context.close();
+    throw new Error('Google session expired. Please re-authenticate via VNC on the VPS and try again.');
+  }
 
   // Click "Create a new map" button
   const createBtn = page.getByRole('button', { name: /create a new map/i }).first();
