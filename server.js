@@ -21,6 +21,8 @@ const LAUNCH_AUTH_BROWSER = path.join(SCRIPTS_DIR, 'launch-auth-browser.mjs');
 // Environment for child processes (Playwright scripts) - inherit DISPLAY and BROWSER_USER_DATA_DIR
 const childEnv = { ...process.env };
 
+const MYMAPS_IMPORT_TIMEOUT_MS = parseInt(process.env.MYMAPS_IMPORT_TIMEOUT_MS || '300000', 10);
+
 // Track if auth browser is currently running
 let authBrowserProcess = null;
 
@@ -403,7 +405,7 @@ app.post('/api/mymaps-import', (req, res) => {
     res.json({ ok: true });
   });
   child.on('error', (err) => res.status(500).json({ error: err.message }));
-  req.setTimeout(120000);
+  req.setTimeout(MYMAPS_IMPORT_TIMEOUT_MS);
 });
 
 const PORT = process.env.PORT || 3000;

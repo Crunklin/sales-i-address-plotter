@@ -33,6 +33,8 @@ const GOOGLE_COLORS = [
   'Brown',     // 9
 ];
 
+const LAYER_WAIT_MS = parseInt(process.env.MYMAPS_LAYER_WAIT_MS || '90000', 10);
+
 if (!mid) {
   process.stderr.write('Usage: node scripts/import-to-mymaps.mjs <mid> [kmlPath] [layerName]\n');
   process.exit(1);
@@ -40,6 +42,37 @@ if (!mid) {
 if (!fs.existsSync(kmlPath)) {
   process.stderr.write('KML file not found: ' + kmlPath + '\n');
   process.exit(1);
+}
+
+async function waitForLayerVisible(page, label, timeoutMs) {
+  if (!label) return false;
+  try {
+    const exact = page.getByText(label, { exact: true }).first();
+    await exact.waitFor({ state: 'visible', timeout: timeoutMs });
+    return true;
+  } catch (_) {}
+  try {
+    const partial = page.getByText(label, { exact: false }).first();
+    await partial.waitFor({ state: 'visible', timeout: Math.min(5000, timeoutMs) });
+    return true;
+  } catch (_) {}
+  return false;
+}
+
+async function findLayerRow(page, label) {
+  if (!label) return null;
+  const selectors = [
+    'div[role="treeitem"]',
+    'div[role="listitem"]',
+    '[class*="layer"]',
+  ];
+  for (const sel of selectors) {
+    try {
+      const row = page.locator(sel).filter({ hasText: label });
+      if (await row.count() > 0) return row.first();
+    } catch (_) {}
+  }
+  return null;
 }
 
 async function main() {
@@ -155,13 +188,18 @@ async function main() {
       await page.getByRole('button', { name: /finish|done|ok/i }).first().click({ timeout: 3000 });
     } catch (_) {}
 
+    const kmlBaseName = path.basename(kmlPath, '.kml');
+    const layerVisible = await waitForLayerVisible(page, kmlBaseName, LAYER_WAIT_MS);
+    if (!layerVisible) {
+      process.stderr.write(`[import] Layer not visible after ${LAYER_WAIT_MS}ms. Continuing without rename/color.\n`);
+    }
+
     // Rename layer if specified
-    if (layerName) {
+    if (layerName && layerVisible) {
       try {
         // Wait for the import to complete
         await browser.thinkDelay();
 
-        const kmlBaseName = path.basename(kmlPath, '.kml');
         process.stderr.write(`[import] Looking for layer to rename (from ${kmlBaseName} to ${layerName})...\n`);
 
         let clicked = false;
@@ -230,7 +268,7 @@ async function main() {
     }
 
     // Change layer color if colorIndex is provided
-    if (colorIndex >= 0) {
+    if (colorIndex >= 0 && layerVisible) {
       try {
         await browser.humanDelay(500, 1000);
         process.stderr.write(`[import] Setting layer color (index ${colorIndex})...\n`);
@@ -240,13 +278,33 @@ async function main() {
 
         let styleOpened = false;
 
+        // Prefer the style control within the target layer row
+        let layerLabel = layerName || kmlBaseName;
+        let layerRow = await findLayerRow(page, layerLabel);
+        if (!layerRow && layerLabel !== kmlBaseName) {
+          layerLabel = kmlBaseName;
+          layerRow = await findLayerRow(page, layerLabel);
+        }
+
+        if (layerRow) {
+          try {
+            const rowStyleBtn = layerRow.locator('[aria-label*="style" i], [aria-label*="color" i], [title*="style" i]').first();
+            await browser.clickDelay();
+            await rowStyleBtn.click({ timeout: 3000 });
+            styleOpened = true;
+            process.stderr.write(`[import] Opened style from layer row (${layerLabel})\n`);
+          } catch (_) {}
+        }
+
         // Try to find and click the style icon
-        try {
-          const paintIcon = page.locator('[aria-label*="style" i], [aria-label*="color" i], [title*="style" i]').last();
-          await browser.clickDelay();
-          await paintIcon.click({ timeout: 3000 });
-          styleOpened = true;
-        } catch (_) {}
+        if (!styleOpened) {
+          try {
+            const paintIcon = page.locator('[aria-label*="style" i], [aria-label*="color" i], [title*="style" i]').last();
+            await browser.clickDelay();
+            await paintIcon.click({ timeout: 3000 });
+            styleOpened = true;
+          } catch (_) {}
+        }
 
         if (!styleOpened) {
           try {
