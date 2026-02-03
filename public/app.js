@@ -30,6 +30,7 @@ let sheets = []; // Array of { filename, headers, rows, geocodedRows, selected, 
 let activeSheetIndex = 0; // Which sheet is being viewed
 let mapInstance = null;
 let mapMarkers = [];
+let lastMapBounds = null;
 
 // Helper to detect session expired and open re-auth page
 function handleError(message) {
@@ -347,7 +348,10 @@ function drawAllSheetsMap(selectedSheets) {
 
   if (allCoords.length) {
     const bounds = window.L.latLngBounds(allCoords);
+    lastMapBounds = bounds;
     mapInstance.fitBounds(bounds, { padding: [24, 24] });
+  } else {
+    lastMapBounds = null;
   }
 }
 
@@ -358,7 +362,12 @@ document.querySelectorAll('.tab').forEach((btn) => {
     btn.classList.add('active');
     const id = 'panel-' + btn.dataset.tab;
     document.getElementById(id).classList.add('active');
-    if (btn.dataset.tab === 'map' && mapInstance) mapInstance.invalidateSize();
+    if (btn.dataset.tab === 'map' && mapInstance) {
+      mapInstance.invalidateSize();
+      if (lastMapBounds) {
+        mapInstance.fitBounds(lastMapBounds, { padding: [24, 24] });
+      }
+    }
   });
 });
 

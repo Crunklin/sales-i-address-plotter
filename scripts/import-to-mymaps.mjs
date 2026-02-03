@@ -67,16 +67,16 @@ async function main() {
     const editUrl = `https://www.google.com/maps/d/edit?mid=${mid}`;
     await page.goto(editUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
     
-    // Human-like wait for page load
-    await browser.thinkDelay();
+    // Short wait for page load
+    await browser.humanDelay(400, 800);
 
     // Check if we hit a Google sign-in/verification page
     if (!await browser.checkGoogleSession(page)) {
       throw new Error('Google session expired - sign in required. The app will help you re-authenticate.');
     }
 
-    // Wait for page to fully load
-    await browser.humanDelay(1500, 2500);
+    // Wait briefly for UI to settle
+    await browser.humanDelay(500, 900);
 
     // Click "Add layer" - try multiple methods with human delays
     let addedLayer = false;
@@ -114,7 +114,7 @@ async function main() {
       throw new Error('Could not click Add layer button');
     }
     
-    await browser.humanDelay(800, 1500);
+    await browser.humanDelay(300, 600);
 
     // Click "Import" with robust selectors and human delay
     const importClicked = await clickImportButton(page);
@@ -122,7 +122,7 @@ async function main() {
       throw new Error('Could not click Import button');
     }
 
-    await browser.humanDelay(500, 1000);
+    await browser.humanDelay(200, 400);
 
     // Try to set file directly on hidden input first (fastest method)
     let fileSet = false;
@@ -156,7 +156,7 @@ async function main() {
       await fileChooser.setFiles(kmlPath);
     }
 
-    await browser.humanDelay(500, 1000);
+    await browser.humanDelay(200, 400);
 
     // Click through any confirmation buttons with human delays
     try {
@@ -164,7 +164,7 @@ async function main() {
       await page.getByRole('button', { name: /select|import|upload/i }).first().click({ timeout: 5000 });
     } catch (_) {}
     
-    await browser.humanDelay(300, 600);
+    await browser.humanDelay(150, 300);
     
     try {
       await browser.clickDelay();
@@ -174,8 +174,8 @@ async function main() {
     // Rename layer if specified
     if (layerName) {
       try {
-        // Wait for the import to complete
-        await browser.thinkDelay();
+        // Short wait for the import to complete
+        await browser.humanDelay(500, 900);
 
         const kmlBaseName = path.basename(kmlPath, '.kml');
         process.stderr.write(`[import] Looking for layer to rename (from ${kmlBaseName} to ${layerName})...\n`);
@@ -234,7 +234,7 @@ async function main() {
           await page.keyboard.press('Control+a');
           await browser.humanType(page, layerName);
           await page.keyboard.press('Enter');
-          await browser.humanDelay(300, 500);
+          await browser.humanDelay(150, 300);
           process.stderr.write(`[import] Renamed layer to: ${layerName}\n`);
         } else {
           process.stderr.write('[import] Could not find layer title element to click\n');
