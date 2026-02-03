@@ -203,40 +203,102 @@ async function doImport(page, attempt = 1) {
   
   await browser.humanDelay(300, 600);
 
-  // Click "Add layer" - try multiple methods
+  // Click "Add layer" - try multiple methods with scrolling
+  // After 2+ layers, "Add layer" may be scrolled out of view in the sidebar
   let addedLayer = false;
   
-  // Method 1: By exact text
+  // First, try to scroll the sidebar to make "Add layer" visible
+  // The sidebar in My Maps is typically a scrollable container
+  try {
+    // Scroll sidebar to bottom where "Add layer" typically is
+    await page.evaluate(() => {
+      const sidebar = document.querySelector('[role="navigation"]') || 
+                      document.querySelector('.widget-pane') ||
+                      document.querySelector('[class*="panel"]');
+      if (sidebar) {
+        sidebar.scrollTop = sidebar.scrollHeight;
+      }
+    });
+    await browser.humanDelay(200, 400);
+  } catch (_) {}
+  
+  // Method 1: By exact text with scroll into view
   try {
     const addLayer = page.getByText('Add layer', { exact: true }).first();
+    // Scroll element into view first
+    await addLayer.scrollIntoViewIfNeeded({ timeout: 5000 });
+    await browser.humanDelay(200, 400);
     await addLayer.waitFor({ state: 'visible', timeout: 10000 });
     await browser.clickDelay();
     await addLayer.click({ timeout: 5000 });
     addedLayer = true;
-  } catch (_) {}
+    process.stderr.write('[import] Clicked "Add layer" via text match\n');
+  } catch (e) {
+    process.stderr.write(`[import] Method 1 failed: ${e.message}\n`);
+  }
 
-  // Method 2: By role
+  // Method 2: By role with scroll
   if (!addedLayer) {
     try {
-      await browser.clickDelay();
       const addLayerBtn = page.getByRole('button', { name: /add layer/i }).first();
+      await addLayerBtn.scrollIntoViewIfNeeded({ timeout: 5000 });
+      await browser.humanDelay(200, 400);
+      await browser.clickDelay();
       await addLayerBtn.click({ timeout: 10000 });
       addedLayer = true;
-    } catch (_) {}
+      process.stderr.write('[import] Clicked "Add layer" via role\n');
+    } catch (e) {
+      process.stderr.write(`[import] Method 2 failed: ${e.message}\n`);
+    }
   }
 
   // Method 3: By any clickable element with "Add layer" text
   if (!addedLayer) {
     try {
-      await browser.clickDelay();
       const addLayerAny = page.locator('text=/add layer/i').first();
+      await addLayerAny.scrollIntoViewIfNeeded({ timeout: 5000 });
+      await browser.humanDelay(200, 400);
+      await browser.clickDelay();
       await addLayerAny.click({ timeout: 10000 });
       addedLayer = true;
-    } catch (_) {}
+      process.stderr.write('[import] Clicked "Add layer" via text locator\n');
+    } catch (e) {
+      process.stderr.write(`[import] Method 3 failed: ${e.message}\n`);
+    }
+  }
+
+  // Method 4: Use JavaScript click as last resort
+  if (!addedLayer) {
+    try {
+      const clicked = await page.evaluate(() => {
+        const elements = Array.from(document.querySelectorAll('*'));
+        for (const el of elements) {
+          if (el.textContent?.trim() === 'Add layer' || 
+              el.innerText?.trim() === 'Add layer') {
+            el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            el.click();
+            return true;
+          }
+        }
+        return false;
+      });
+      if (clicked) {
+        addedLayer = true;
+        process.stderr.write('[import] Clicked "Add layer" via JS click\n');
+      }
+    } catch (e) {
+      process.stderr.write(`[import] Method 4 failed: ${e.message}\n`);
+    }
   }
 
   if (!addedLayer) {
-    throw new Error('Could not click Add layer button');
+    // Take screenshot for debugging
+    try {
+      const screenshotPath = path.join(projectRoot, `debug-add-layer-fail-${Date.now()}.png`);
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      process.stderr.write(`[import] Screenshot saved: ${screenshotPath}\n`);
+    } catch (_) {}
+    throw new Error('Could not click Add layer button - it may be scrolled out of view or the UI has changed');
   }
   
   await browser.humanDelay(400, 800);
@@ -244,8 +306,15 @@ async function doImport(page, attempt = 1) {
   // Click "Import" button
   const importClicked = await clickImportButton(page);
   if (!importClicked) {
+    // Take screenshot for debugging
+    try {
+      const screenshotPath = path.join(projectRoot, `debug-import-btn-fail-${Date.now()}.png`);
+      await page.screenshot({ path: screenshotPath, fullPage: true });
+      process.stderr.write(`[import] Screenshot saved: ${screenshotPath}\n`);
+    } catch (_) {}
     throw new Error('Could not click Import button');
   }
+  process.stderr.write('[import] Clicked Import button\n');
 
   await browser.humanDelay(300, 600);
 

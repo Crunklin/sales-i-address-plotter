@@ -1,6 +1,7 @@
 /**
  * Shared browser manager for persistent sessions and stealth mode.
  * Keeps browser open between operations to avoid repeated logins.
+ * Includes file-based locking to prevent concurrent browser access.
  */
 
 import { chromium } from 'playwright-extra';
@@ -18,6 +19,75 @@ const projectRoot = path.resolve(__dirname, '..');
 const defaultUserDataDir = process.env.BROWSER_USER_DATA_DIR || path.join(projectRoot, 'playwright-my-maps-profile');
 const LAUNCH_RETRIES = parseInt(process.env.BROWSER_LAUNCH_RETRIES || '3', 10);
 const LAUNCH_RETRY_DELAY_MS = parseInt(process.env.BROWSER_LAUNCH_RETRY_DELAY_MS || '1000', 10);
+
+// Lock file for ensuring only one browser operation at a time
+const LOCK_FILE = path.join(projectRoot, '.browser-lock');
+const LOCK_TIMEOUT_MS = parseInt(process.env.BROWSER_LOCK_TIMEOUT_MS || '180000', 10); // 3 minutes max
+const LOCK_WAIT_MS = parseInt(process.env.BROWSER_LOCK_WAIT_MS || '60000', 10); // Wait up to 60s for lock
+let currentLockPid = null;
+
+/**
+ * Acquire an exclusive lock for browser operations.
+ * Waits if another process holds the lock.
+ */
+export async function acquireLock() {
+  const startTime = Date.now();
+  const myPid = process.pid;
+  
+  while (Date.now() - startTime < LOCK_WAIT_MS) {
+    try {
+      // Check if lock exists and is still valid
+      if (fs.existsSync(LOCK_FILE)) {
+        const lockData = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf-8'));
+        const lockAge = Date.now() - lockData.timestamp;
+        
+        // If lock is old (stale), remove it
+        if (lockAge > LOCK_TIMEOUT_MS) {
+          process.stderr.write(`[browser] Removing stale lock (age: ${Math.round(lockAge/1000)}s)\n`);
+          fs.unlinkSync(LOCK_FILE);
+        } else if (lockData.pid === myPid) {
+          // We already have the lock
+          return true;
+        } else {
+          // Another process has the lock - wait
+          process.stderr.write(`[browser] Waiting for lock (held by PID ${lockData.pid} for ${Math.round(lockAge/1000)}s)...\n`);
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+      }
+      
+      // Try to acquire lock
+      fs.writeFileSync(LOCK_FILE, JSON.stringify({ pid: myPid, timestamp: Date.now() }), 'utf-8');
+      currentLockPid = myPid;
+      process.stderr.write(`[browser] Lock acquired by PID ${myPid}\n`);
+      return true;
+    } catch (e) {
+      // Race condition - another process grabbed the lock
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  
+  throw new Error('Timeout waiting for browser lock - another import is still running');
+}
+
+/**
+ * Release the browser lock.
+ */
+export function releaseLock() {
+  try {
+    if (fs.existsSync(LOCK_FILE)) {
+      const lockData = JSON.parse(fs.readFileSync(LOCK_FILE, 'utf-8'));
+      // Only release if we own the lock
+      if (lockData.pid === process.pid) {
+        fs.unlinkSync(LOCK_FILE);
+        process.stderr.write(`[browser] Lock released by PID ${process.pid}\n`);
+      }
+    }
+    currentLockPid = null;
+  } catch (e) {
+    // Ignore errors on release
+  }
+}
 
 /**
  * Kill any zombie chromium/chrome processes and remove profile lock files.
@@ -184,6 +254,7 @@ export function keepAlive() {
 /**
  * Close the browser context gracefully.
  * This ensures all pages are closed before closing the context.
+ * Also releases the lock.
  */
 export async function closeBrowser() {
   if (browserContext) {
@@ -206,6 +277,12 @@ export async function closeBrowser() {
   }
   // Also cleanup any orphaned processes
   cleanupBrowserProcesses(defaultUserDataDir);
+  
+  // Wait a bit more to ensure Chrome fully releases the profile
+  await new Promise(r => setTimeout(r, 1500));
+  
+  // Release the lock
+  releaseLock();
 }
 
 /**
@@ -215,6 +292,7 @@ export async function closeBrowser() {
 export function forceCleanup(userDataDir = defaultUserDataDir) {
   browserContext = null;
   cleanupBrowserProcesses(userDataDir);
+  releaseLock();
 }
 
 /**

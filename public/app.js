@@ -580,10 +580,10 @@ async function importAllSheetsToMap(mid) {
       
       successCount++;
       
-      // Add delay between imports to let browser settle (not after last one)
+      // Add delay between imports to let browser fully close (not after last one)
       if (i < selected.length - 1) {
-        mymapsStatus.textContent = `Layer ${i + 1}/${selected.length} done. Preparing next…`;
-        await new Promise(r => setTimeout(r, 2000));
+        mymapsStatus.textContent = `Layer ${i + 1}/${selected.length} done. Waiting for browser to close…`;
+        await new Promise(r => setTimeout(r, 5000)); // 5 seconds to ensure browser closes
       }
       
     } catch (e) {
