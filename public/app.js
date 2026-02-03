@@ -127,14 +127,18 @@ async function geocodeAllSheets() {
 }
 
 function renderSheetsList() {
-  sheetsList.innerHTML = sheets.map((sheet, i) => `
+  sheetsList.innerHTML = sheets.map((sheet, i) => {
+    const color = getSheetColor(i);
+    return `
     <div class="sheet-item ${i === activeSheetIndex ? 'active' : ''}" data-index="${i}">
       <input type="checkbox" class="sheet-checkbox" ${sheet.selected ? 'checked' : ''} data-index="${i}" />
+      <span class="sheet-color-indicator" style="background: ${color};"></span>
       <span class="sheet-item-name">${escapeHtml(sheet.filename)}</span>
       <input type="text" class="sheet-layer-name" data-index="${i}" value="${escapeHtml(sheet.layerName)}" placeholder="Layer name" />
       <span class="sheet-item-count">${sheet.geocodedRows.length} rows</span>
     </div>
-  `).join('');
+  `;
+  }).join('');
   
   // Click on sheet item to view it (but not on inputs)
   sheetsList.querySelectorAll('.sheet-item').forEach(el => {
@@ -146,11 +150,12 @@ function renderSheetsList() {
     });
   });
   
-  // Checkbox toggle
+  // Checkbox toggle - refresh view when selection changes
   sheetsList.querySelectorAll('.sheet-checkbox').forEach(cb => {
     cb.addEventListener('change', (e) => {
       const idx = parseInt(e.target.dataset.index);
       sheets[idx].selected = e.target.checked;
+      showActiveSheet(); // Refresh table and map
     });
   });
   
@@ -165,51 +170,98 @@ function renderSheetsList() {
   });
 }
 
+// Color palette for sheets
+const SHEET_COLORS = [
+  '#3b82f6', // blue
+  '#ef4444', // red
+  '#22c55e', // green
+  '#f59e0b', // amber
+  '#8b5cf6', // purple
+  '#ec4899', // pink
+  '#06b6d4', // cyan
+  '#f97316', // orange
+  '#84cc16', // lime
+  '#6366f1', // indigo
+];
+
+function getSheetColor(index) {
+  return SHEET_COLORS[index % SHEET_COLORS.length];
+}
+
 function showActiveSheet() {
-  const sheet = sheets[activeSheetIndex];
-  if (!sheet) return;
+  const selected = getSelectedSheets();
   
   const sheetEl = document.getElementById('sheetName');
-  if (sheetEl) sheetEl.textContent = `Viewing: ${sheet.filename}`;
+  if (sheetEl) {
+    if (selected.length === 0) {
+      sheetEl.textContent = 'No sheets selected';
+    } else if (selected.length === 1) {
+      sheetEl.textContent = `Viewing: ${selected[0].filename}`;
+    } else {
+      sheetEl.textContent = `Viewing ${selected.length} sheets`;
+    }
+  }
   
-  renderTable(sheet.geocodedRows);
-  drawMap(sheet.geocodedRows);
+  renderAllSheetsTables(selected);
+  drawAllSheetsMap(selected);
 }
 
 function getSelectedSheets() {
   return sheets.filter(s => s.selected);
 }
 
-function renderTable(rows) {
-  if (!rows.length) {
+function renderAllSheetsTables(selectedSheets) {
+  if (!selectedSheets.length) {
     tableHead.innerHTML = '';
-    tableBody.innerHTML = '<tr><td>No data</td></tr>';
+    tableBody.innerHTML = '<tr><td>No sheets selected</td></tr>';
     return;
   }
+
+  // Build combined table with section headers for each sheet
+  let bodyHtml = '';
   const prefer = ['Customer - Parent  Account', 'Address1', 'cleanedAddress', 'Town', 'Postcode', 'lat', 'lng', 'display_name'];
-  const allKeys = Object.keys(rows[0]);
-  const headers = [...new Set([...prefer.filter((k) => allKeys.includes(k)), ...allKeys.filter((k) => !prefer.includes(k))])];
+  
+  // Get all possible headers from all sheets
+  const allKeys = new Set();
+  selectedSheets.forEach(sheet => {
+    if (sheet.geocodedRows.length) {
+      Object.keys(sheet.geocodedRows[0]).forEach(k => allKeys.add(k));
+    }
+  });
+  const headers = [...new Set([...prefer.filter((k) => allKeys.has(k)), ...Array.from(allKeys).filter((k) => !prefer.includes(k))])];
+  
   tableHead.innerHTML = '<tr>' + headers.map((h) => `<th>${escapeHtml(h)}</th>`).join('') + '</tr>';
-  tableBody.innerHTML = rows
-    .map(
-      (row) =>
-        '<tr>' +
-        headers
-          .map((h) => {
-            const v = row[h];
-            const isLatLng = h === 'lat' || h === 'lng';
-            const ok = isLatLng && v != null && v !== '';
-            const cls = isLatLng ? (ok ? 'lat-lng-ok' : 'lat-lng-miss') : '';
-            return `<td class="${cls}">${escapeHtml(String(v ?? ''))}</td>`;
-          })
-          .join('') +
-        '</tr>'
-    )
-    .join('');
+
+  selectedSheets.forEach((sheet, sheetIndex) => {
+    const color = getSheetColor(sheets.indexOf(sheet));
+    const layerName = sheet.layerName || sheet.filename.replace(/\.csv$/i, '');
+    
+    // Sheet separator row
+    bodyHtml += `<tr class="sheet-separator" style="background: ${color}20; border-left: 4px solid ${color};">
+      <td colspan="${headers.length}" style="font-weight: 600; color: ${color};">
+        <span class="sheet-color-dot" style="background: ${color};"></span>
+        ${escapeHtml(layerName)} (${sheet.geocodedRows.length} rows)
+      </td>
+    </tr>`;
+    
+    // Sheet rows
+    sheet.geocodedRows.forEach((row) => {
+      bodyHtml += '<tr style="border-left: 4px solid ' + color + '20;">' +
+        headers.map((h) => {
+          const v = row[h];
+          const isLatLng = h === 'lat' || h === 'lng';
+          const ok = isLatLng && v != null && v !== '';
+          const cls = isLatLng ? (ok ? 'lat-lng-ok' : 'lat-lng-miss') : '';
+          return `<td class="${cls}">${escapeHtml(String(v ?? ''))}</td>`;
+        }).join('') +
+        '</tr>';
+    });
+  });
+
+  tableBody.innerHTML = bodyHtml;
 }
 
-function drawMap(rows) {
-  const withCoords = rows.filter((r) => r.lat != null && r.lng != null);
+function drawAllSheetsMap(selectedSheets) {
   if (mapInstance) {
     mapMarkers.forEach((m) => m.remove());
     mapMarkers = [];
@@ -219,15 +271,34 @@ function drawMap(rows) {
       attribution: '© OpenStreetMap',
     }).addTo(mapInstance);
   }
-  withCoords.forEach((r) => {
-    const name = r['Customer - Parent  Account'] ?? r.cleanedAddress ?? '';
-    const marker = window.L.marker([r.lat, r.lng])
-      .bindPopup(`<strong>${escapeHtml(name)}</strong><br>${escapeHtml(r.cleanedAddress || '')}`)
-      .addTo(mapInstance);
-    mapMarkers.push(marker);
+
+  const allCoords = [];
+
+  selectedSheets.forEach((sheet) => {
+    const color = getSheetColor(sheets.indexOf(sheet));
+    const layerName = sheet.layerName || sheet.filename.replace(/\.csv$/i, '');
+    const withCoords = sheet.geocodedRows.filter((r) => r.lat != null && r.lng != null);
+    
+    withCoords.forEach((r) => {
+      const name = r['Customer - Parent  Account'] ?? r.cleanedAddress ?? '';
+      // Use circle markers with sheet-specific color
+      const marker = window.L.circleMarker([r.lat, r.lng], {
+        radius: 8,
+        fillColor: color,
+        color: '#fff',
+        weight: 2,
+        opacity: 1,
+        fillOpacity: 0.9,
+      })
+        .bindPopup(`<strong style="color: ${color};">[${escapeHtml(layerName)}]</strong><br><strong>${escapeHtml(name)}</strong><br>${escapeHtml(r.cleanedAddress || '')}`)
+        .addTo(mapInstance);
+      mapMarkers.push(marker);
+      allCoords.push([r.lat, r.lng]);
+    });
   });
-  if (withCoords.length) {
-    const bounds = window.L.latLngBounds(withCoords.map((r) => [r.lat, r.lng]));
+
+  if (allCoords.length) {
+    const bounds = window.L.latLngBounds(allCoords);
     mapInstance.fitBounds(bounds, { padding: [24, 24] });
   }
 }

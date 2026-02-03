@@ -263,6 +263,21 @@ tr:hover td {
 .lat-lng-ok { color: #22c55e; }
 .lat-lng-miss { color: #f59e0b; }
 
+/* Sheet separator in combined table */
+.sheet-separator td {
+  padding: 0.75rem 0.75rem !important;
+  font-size: 0.95rem;
+}
+
+.sheet-color-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 0.5rem;
+  vertical-align: middle;
+}
+
 /* Sheets list */
 .sheets-list {
   margin-bottom: 1rem;
@@ -311,6 +326,13 @@ tr:hover td {
   width: 18px;
   height: 18px;
   accent-color: #3b82f6;
+}
+
+.sheet-color-indicator {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .sheet-item-name {
