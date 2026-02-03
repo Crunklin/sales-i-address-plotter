@@ -21,7 +21,6 @@ const importToMapBtn = document.getElementById('importToMapBtn');
 const mymapsNewMap = document.getElementById('mymapsNewMap');
 const newMapNameInput = document.getElementById('newMapName');
 const confirmCreateMapBtn = document.getElementById('confirmCreateMapBtn');
-const importManualBtn = document.getElementById('importManualBtn');
 const mymapsPreview = document.getElementById('mymapsPreview');
 const mymapsIframe = document.getElementById('mymapsIframe');
 const openMapLink = document.getElementById('openMapLink');
@@ -435,17 +434,6 @@ importToMapBtn.addEventListener('click', async () => {
   importToMapBtn.disabled = true;
   await importAllSheetsToMap(mid);
   importToMapBtn.disabled = false;
-});
-
-importManualBtn.addEventListener('click', async () => {
-  const mid = document.getElementById('mymapsMapId').value.trim();
-  if (!mid) {
-    alert('Enter a map ID.');
-    return;
-  }
-  importManualBtn.disabled = true;
-  await importAllSheetsToMap(mid);
-  importManualBtn.disabled = false;
 });
 
 createMapBtn.addEventListener('click', () => {
