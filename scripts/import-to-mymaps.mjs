@@ -358,7 +358,7 @@ async function doImport(page, attempt = 1) {
   await browser.humanDelay(400, 800);
   await takeDebugScreenshot(page, 'after-add-layer');
 
-  // Click "Import" button
+  // Click "Import" button (on the newly created layer)
   process.stderr.write(`[import] Step 6: Looking for Import button\n`);
   const importClicked = await clickImportButton(page);
   if (!importClicked) {
@@ -366,7 +366,59 @@ async function doImport(page, attempt = 1) {
     throw new Error('Could not click Import button');
   }
   process.stderr.write('[import] Clicked Import button\n');
-  await takeDebugScreenshot(page, 'after-import-click');
+  
+  // Wait for import dialog to fully load (the content can take time)
+  process.stderr.write(`[import] Step 7: Waiting for import dialog to load\n`);
+  await browser.humanDelay(2000, 3000);
+  await takeDebugScreenshot(page, 'dialog-loading');
+  
+  // Check if dialog content loaded by looking for file input or browse button
+  let dialogLoaded = false;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    // Check for file input in main page or iframes
+    const fileInputExists = await page.locator('input[type="file"]').count() > 0;
+    if (fileInputExists) {
+      dialogLoaded = true;
+      process.stderr.write(`[import] Dialog loaded (file input found on main page)\n`);
+      break;
+    }
+    
+    // Check in iframes
+    for (const frame of page.frames()) {
+      const frameFileInput = await frame.locator('input[type="file"]').count().catch(() => 0);
+      if (frameFileInput > 0) {
+        dialogLoaded = true;
+        process.stderr.write(`[import] Dialog loaded (file input found in iframe)\n`);
+        break;
+      }
+    }
+    if (dialogLoaded) break;
+    
+    // Check for "Browse" or "Select" button
+    const browseBtn = await page.getByRole('button', { name: /browse|select|choose/i }).count();
+    if (browseBtn > 0) {
+      dialogLoaded = true;
+      process.stderr.write(`[import] Dialog loaded (browse button found)\n`);
+      break;
+    }
+    
+    process.stderr.write(`[import] Dialog content not ready, waiting... (attempt ${attempt + 1}/5)\n`);
+    await browser.humanDelay(1500, 2500);
+  }
+  
+  if (!dialogLoaded) {
+    await takeDebugScreenshot(page, 'dialog-blank');
+    // Try pressing Escape and clicking Import again
+    process.stderr.write(`[import] Dialog appears blank, retrying Import click...\n`);
+    await page.keyboard.press('Escape');
+    await browser.humanDelay(500, 1000);
+    
+    // Try clicking Import link directly on the layer
+    const importLink = page.locator('text=Import').first();
+    await importLink.click({ timeout: 5000 }).catch(() => {});
+    await browser.humanDelay(2000, 3000);
+    await takeDebugScreenshot(page, 'dialog-retry');
+  }
 
   await browser.humanDelay(300, 600);
 
