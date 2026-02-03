@@ -543,6 +543,9 @@ async function importAllSheetsToMap(mid) {
     return false;
   }
   
+  let successCount = 0;
+  let failedSheets = [];
+  
   for (let i = 0; i < selected.length; i++) {
     const sheet = selected[i];
     // Use the per-sheet layerName (editable in the sheets list)
@@ -560,25 +563,74 @@ async function importAllSheetsToMap(mid) {
       let data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to save KML');
       
-      // Import to map
+      // Import to map with timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 min timeout per layer
+      
       res = await fetch('/api/mymaps-import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ mid, layerName }),
+        signal: controller.signal,
       });
+      clearTimeout(timeoutId);
+      
       data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Import failed');
       
+      successCount++;
+      
+      // Add delay between imports to let browser settle (not after last one)
+      if (i < selected.length - 1) {
+        mymapsStatus.textContent = `Layer ${i + 1}/${selected.length} done. Preparing next…`;
+        await new Promise(r => setTimeout(r, 2000));
+      }
+      
     } catch (e) {
-      showError(`Failed to import ${sheet.filename}: ${e.message}`);
-      return false;
+      // Handle abort separately
+      if (e.name === 'AbortError') {
+        failedSheets.push({ name: sheet.filename, error: 'Timed out' });
+        showError(`Import of ${sheet.filename} timed out. Trying to continue...`);
+      } else {
+        failedSheets.push({ name: sheet.filename, error: e.message });
+        // Check if it's a session error - stop completely
+        const errMsg = (e.message || '').toLowerCase();
+        if (errMsg.includes('session expired') || errMsg.includes('sign in required')) {
+          showError(e.message);
+          mymapsStatus.textContent = `Stopped at layer ${i + 1}/${selected.length}. Please re-authenticate.`;
+          return false;
+        }
+        showError(`Failed to import ${sheet.filename}: ${e.message}`);
+      }
+      
+      // Ask user if they want to continue after a failure
+      if (i < selected.length - 1) {
+        const continueImport = confirm(
+          `Layer "${layerName}" failed to import.\n\n` +
+          `Continue with remaining ${selected.length - i - 1} layer(s)?`
+        );
+        if (!continueImport) {
+          mymapsStatus.textContent = `Stopped. ${successCount}/${selected.length} layer(s) imported.`;
+          showMapPreview(mid);
+          return false;
+        }
+        // Clean up browser before retrying
+        mymapsStatus.textContent = `Cleaning up before next layer...`;
+        await fetch('/api/browser-cleanup', { method: 'POST' }).catch(() => {});
+        await new Promise(r => setTimeout(r, 3000));
+      }
     }
   }
   
-  mymapsStatus.textContent = `Done! ${selected.length} layer(s) added to map.`;
+  if (failedSheets.length > 0) {
+    const failedNames = failedSheets.map(f => f.name).join(', ');
+    mymapsStatus.textContent = `Done! ${successCount}/${selected.length} layers imported. Failed: ${failedNames}`;
+  } else {
+    mymapsStatus.textContent = `Done! ${selected.length} layer(s) added to map.`;
+  }
   showMapPreview(mid);
   setTimeout(refreshMapPreview, 2000);
-  return true;
+  return successCount > 0;
 }
 
 mymapsSelect.addEventListener('change', () => {

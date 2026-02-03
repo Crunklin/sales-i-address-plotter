@@ -122,8 +122,17 @@ export async function getBrowser(userDataDir = defaultUserDataDir) {
       '--disable-dev-shm-usage',
       '--disable-gpu',
       '--window-size=1280,900',
+      // Prevent session restore prompts
+      '--disable-session-crashed-bubble',
+      '--disable-infobars',
+      '--hide-crash-restore-bubble',
+      // Don't restore previous session
+      '--no-first-run',
+      '--no-default-browser-check',
     ],
     viewport: { width: 1280, height: 900 },
+    // Ignore HTTPS errors that might cause issues
+    ignoreHTTPSErrors: true,
   };
 
   // Clean up any zombie processes before first attempt
@@ -173,15 +182,25 @@ export function keepAlive() {
 }
 
 /**
- * Close the browser context.
- * Only call this when completely done or on error.
+ * Close the browser context gracefully.
+ * This ensures all pages are closed before closing the context.
  */
 export async function closeBrowser() {
   if (browserContext) {
     try {
+      // Close all pages first to ensure clean shutdown
+      const pages = browserContext.pages();
+      for (const page of pages) {
+        try {
+          await page.close();
+        } catch (_) {}
+      }
+      // Small delay to let pages close
+      await new Promise(r => setTimeout(r, 500));
+      // Now close the context
       await browserContext.close();
     } catch (e) {
-      // Ignore errors on close
+      process.stderr.write(`[browser] Error closing browser: ${e.message}\n`);
     }
     browserContext = null;
   }
