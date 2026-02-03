@@ -52,7 +52,17 @@ function handleError(message) {
       `Click OK to open the sign-in page now.`
     );
     if (openVnc) {
-      window.open(vncUrl, '_blank');
+      const popup = window.open(vncUrl, '_blank');
+      // If popup was blocked, show the URL to copy
+      if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+        alert(
+          `Popup blocked! Please allow popups or open this URL manually:\n\n` +
+          vncUrl + `\n\n` +
+          `(The URL has been copied to your clipboard if supported)`
+        );
+        // Try to copy to clipboard
+        navigator.clipboard?.writeText(vncUrl).catch(() => {});
+      }
     }
     return true; // Indicates it was a session error
   }
