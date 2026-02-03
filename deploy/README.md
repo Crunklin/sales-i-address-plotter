@@ -1,6 +1,50 @@
 # Deploy Address Plotter to DigitalOcean (or any Ubuntu VPS)
 
-This deploys the app so coworkers can use it in the browser with **one-click "Add to Google My Maps"**. The server runs a shared Google account’s browser (via Playwright + Xvfb); all imports go to that account’s maps, which you then share with the team.
+This deploys the app so coworkers can use it in the browser with **one-click "Add to Google My Maps"**. 
+
+## Multi-User Mode (Recommended)
+
+Each user gets their own isolated Google account profile. This prevents Google from flagging the account for suspicious activity.
+
+### Configuration
+
+Set the `APP_USERS` environment variable as a JSON array in `.env`:
+
+```bash
+APP_USERS='[{"id":"alice","name":"Alice Smith","pin":"1234"},{"id":"bob","name":"Bob Jones","pin":"5678"},{"id":"carol","name":"Carol Davis","pin":"9012"},{"id":"dave","name":"Dave Wilson","pin":"3456"}]'
+```
+
+Each user:
+- Selects their name from a dropdown on the login page
+- Enters their PIN to sign in
+- Gets an isolated browser profile at `profiles/{userId}/`
+- Uses their own Google account for My Maps
+
+### First-time Setup Per User
+
+1. User signs in with their PIN
+2. First time they try to create/list maps, they'll see "Google Login Required"
+3. They click OK to open noVNC and log into their Google account
+4. From then on, their session is saved in their profile
+
+### Create Profile Locally (Alternative)
+
+You can also create a profile locally and upload it:
+
+```bash
+# On your PC - creates profile with stealth mode
+node scripts/create-local-profile.mjs
+
+# Upload to VPS
+scp -r ./new-google-profile root@YOUR_SERVER_IP:/opt/address-plotter/profiles/USERNAME/
+ssh root@YOUR_SERVER_IP "systemctl restart address-plotter"
+```
+
+---
+
+## Legacy Single-User Mode
+
+For backward compatibility, you can use a shared account with `SHARED_SECRET` instead of `APP_USERS`. The server runs a shared Google account's browser; all imports go to that account's maps.
 
 ## Quick start: setup wizard (automated)
 
@@ -53,8 +97,9 @@ SSH in and create `.env`:
 ssh root@YOUR_SERVER_IP
 cd /opt/address-plotter
 cp deploy/env.production .env
-# Edit .env and set at least:
-#   SHARED_SECRET=your-secret
+# Edit .env and set:
+#   For multi-user: APP_USERS='[{"id":"user1","name":"User One","pin":"1234"}]'
+#   For legacy: SHARED_SECRET=your-secret
 #   (optional) GOOGLE_GEOCODING_API_KEY=...
 ```
 
@@ -68,66 +113,46 @@ chmod +x deploy/setup-vps.sh
 ./deploy/setup-vps.sh
 ```
 
-This installs Node 20, Xvfb, Playwright Chromium, system deps, and creates two systemd services:
+This installs Node 20, Xvfb, Playwright Chromium, system deps, and creates systemd services:
 
 - `address-plotter-xvfb` — virtual display (`:99`)
-- `address-plotter` — the app (runs with `DISPLAY=:99` and `BROWSER_USER_DATA_DIR=browser-profile/`)
+- `address-plotter` — the app (runs with `DISPLAY=:99`)
+- `address-plotter-vnc` — x11vnc server for re-authentication
+- `address-plotter-novnc` — noVNC web client (port 6080)
 
-### 5. One-time: add the shared Google account (My Maps)
+### 5. One-time: add Google accounts
 
-The server needs a browser profile where the **shared** Google account is already logged in.
+**For multi-user mode:** Each user logs in via noVNC on first use. Their profile is created automatically.
 
-**On your PC:**
-
-```bash
-npm run export-google-profile
-```
-
-A browser opens. Log in with the **shared** Google account (the one you’ll use for My Maps on the server). Close the browser when done.
-
-**Upload the profile to the server:**
-
-1. Zip the folder `playwright-my-maps-profile` (e.g. right-click → Compress, or `zip -r playwright-my-maps-profile.zip playwright-my-maps-profile`).
-2. Upload and extract on the server so `browser-profile/` contains the profile files (e.g. `Default`, etc.):
-
-```bash
-scp playwright-my-maps-profile.zip root@YOUR_SERVER_IP:/tmp/
-ssh root@YOUR_SERVER_IP
-cd /opt/address-plotter
-mkdir -p browser-profile
-unzip -o /tmp/playwright-my-maps-profile.zip
-# If the zip has a top-level folder, move contents:
-mv playwright-my-maps-profile/* browser-profile/
-systemctl restart address-plotter
-```
+**For legacy mode:** Run `npm run export-google-profile` on your PC, log in with the shared Google account, then upload that profile to the server.
 
 ### 6. Open the app
 
 - **URL:** `http://YOUR_SERVER_IP:3000`  
-- Users enter the **SHARED_SECRET** to sign in, then use the app and “Add to Google My Maps” as usual.  
-- Imports go to the **shared** account’s maps; share those maps (or the account) with coworkers.
+- **noVNC:** `http://YOUR_SERVER_IP:6080/vnc.html` (for Google re-authentication)
 
 ---
 
 ## Optional: domain and HTTPS
 
 - Point a domain A record to the droplet IP.  
-- Install nginx and Certbot, proxy `https://yourdomain.com` to `http://127.0.0.1:3000`, and use Let’s Encrypt for SSL.
+- Install nginx and Certbot, proxy `https://yourdomain.com` to `http://127.0.0.1:3000`, and use Let's Encrypt for SSL.
 
 ---
 
 ## Troubleshooting
 
-- **“Failed to list maps” / “Import failed”**  
-  - Ensure the Google profile is in `browser-profile/` and the shared account is logged in.  
-  - Check logs: `journalctl -u address-plotter -f`.
+- **"Failed to list maps" / "Import failed"**  
+  - For multi-user: user needs to log in via noVNC  
+  - For legacy: ensure the Google profile is in place and the account is logged in  
+  - Check logs: `journalctl -u address-plotter -f`
 
 - **Browser / Chromium errors on server**  
-  - Ensure Xvfb is running: `systemctl status address-plotter-xvfb`.  
-  - The setup script installs Playwright’s Chromium and required libs; if something is missing, install the [Playwright Ubuntu deps](https://playwright.dev/docs/intro#installing-system-dependencies) for your image.
+  - Ensure Xvfb is running: `systemctl status address-plotter-xvfb`  
+  - Ensure VNC is running: `systemctl status address-plotter-vnc address-plotter-novnc`
 
 - **App not listening**  
-  - Check `systemctl status address-plotter` and `journalctl -u address-plotter -n 50`.
+  - Check `systemctl status address-plotter` and `journalctl -u address-plotter -n 50`
 
 ---
 
