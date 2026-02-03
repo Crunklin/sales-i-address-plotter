@@ -36,26 +36,52 @@ if (!fs.existsSync(kmlPath)) {
 }
 
 /**
- * Dismiss any "Restore pages" or similar Chrome dialogs
+ * Dismiss any "Restore pages" or similar Chrome dialogs/infobars
  */
 async function dismissChromeDialogs(page) {
   try {
-    // Look for "Restore" button in crash recovery dialog
-    const restoreBtn = page.locator('button:has-text("Restore"), [role="button"]:has-text("Restore")').first();
-    if (await restoreBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
-      process.stderr.write('[import] Dismissing "Restore pages" dialog...\n');
-      // Click the X or close button instead of restore to avoid loading old tabs
-      const closeBtn = page.locator("button:has-text('×'), button:has-text('Close'), button:has-text('Don\\'t restore')").first();
-      if (await closeBtn.isVisible({ timeout: 500 }).catch(() => false)) {
-        await closeBtn.click();
-      } else {
-        // If no close button, just click elsewhere to dismiss
-        await page.keyboard.press('Escape');
+    // Method 1: Try to dismiss via JavaScript - most reliable for Chrome infobars
+    await page.evaluate(() => {
+      // Find and click any "Don't restore" or dismiss buttons
+      const buttons = document.querySelectorAll('button');
+      for (const btn of buttons) {
+        const text = btn.textContent?.toLowerCase() || '';
+        if (text.includes('restore') || text.includes('dismiss') || text.includes('close') || text === '×') {
+          // For restore dialog, we want to NOT restore (click X or dismiss)
+          if (btn.textContent === '×' || text.includes('dismiss') || text.includes("don't")) {
+            btn.click();
+            return 'dismissed';
+          }
+        }
       }
-      await browser.humanDelay(300, 500);
-    }
+      // Also try to close any infobars
+      const infobars = document.querySelectorAll('[class*="infobar"], [class*="InfoBar"], [class*="toast"]');
+      for (const bar of infobars) {
+        const closeBtn = bar.querySelector('button, [role="button"]');
+        if (closeBtn) {
+          closeBtn.click();
+          return 'infobar-closed';
+        }
+      }
+      return 'no-dialog';
+    }).then(result => {
+      if (result !== 'no-dialog') {
+        process.stderr.write(`[import] Chrome dialog handled: ${result}\n`);
+      }
+    }).catch(() => {});
+
+    // Method 2: Try keyboard shortcuts to dismiss
+    await page.keyboard.press('Escape');
+    await browser.humanDelay(100, 200);
+    
+    // Method 3: Click on the main content area to ensure focus
+    try {
+      await page.mouse.click(640, 450); // Click center of viewport
+      await browser.humanDelay(100, 200);
+    } catch (_) {}
+
   } catch (_) {
-    // Dialog might not exist, that's fine
+    // Dialog handling failed, continue anyway
   }
 }
 
@@ -177,29 +203,57 @@ async function waitForImportComplete(page, timeout = 30000) {
 }
 
 /**
+ * Take a debug screenshot with timestamp
+ */
+async function takeDebugScreenshot(page, label) {
+  try {
+    const timestamp = Date.now();
+    const screenshotPath = path.join(projectRoot, `debug-${label}-${timestamp}.png`);
+    await page.screenshot({ path: screenshotPath, fullPage: false });
+    process.stderr.write(`[import] Screenshot: ${screenshotPath}\n`);
+    return screenshotPath;
+  } catch (e) {
+    process.stderr.write(`[import] Screenshot failed: ${e.message}\n`);
+    return null;
+  }
+}
+
+/**
  * Main import function with retry logic
  */
 async function doImport(page, attempt = 1) {
+  process.stderr.write(`[import] === STARTING IMPORT ===\n`);
   process.stderr.write(`[import] Attempt ${attempt}/${MAX_RETRIES + 1} - Importing to map ${mid}\n`);
+  process.stderr.write(`[import] Layer name: ${layerName || '(default)'}\n`);
   
   const editUrl = `https://www.google.com/maps/d/edit?mid=${mid}`;
   
   // Navigate to map
+  process.stderr.write(`[import] Step 1: Navigating to ${editUrl}\n`);
   await page.goto(editUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
   await browser.humanDelay(500, 1000);
   
   // Dismiss any Chrome dialogs (like "Restore pages")
+  process.stderr.write(`[import] Step 2: Checking for Chrome dialogs\n`);
   await dismissChromeDialogs(page);
+  await browser.humanDelay(300, 500);
+  await dismissChromeDialogs(page); // Try twice
   
   // Check Google session
+  process.stderr.write(`[import] Step 3: Checking Google session\n`);
   if (!await browser.checkGoogleSession(page)) {
+    await takeDebugScreenshot(page, 'session-expired');
     throw new Error('Google session expired - sign in required. The app will help you re-authenticate.');
   }
+  process.stderr.write(`[import] Session OK\n`);
   
   // Wait for My Maps UI to be ready
+  process.stderr.write(`[import] Step 4: Waiting for My Maps UI\n`);
   if (!await waitForMapsUI(page, 30000)) {
+    await takeDebugScreenshot(page, 'ui-not-ready');
     throw new Error('My Maps UI did not load - "Add layer" button not found');
   }
+  process.stderr.write(`[import] UI ready\n`);
   
   await browser.humanDelay(300, 600);
 
@@ -302,19 +356,17 @@ async function doImport(page, attempt = 1) {
   }
   
   await browser.humanDelay(400, 800);
+  await takeDebugScreenshot(page, 'after-add-layer');
 
   // Click "Import" button
+  process.stderr.write(`[import] Step 6: Looking for Import button\n`);
   const importClicked = await clickImportButton(page);
   if (!importClicked) {
-    // Take screenshot for debugging
-    try {
-      const screenshotPath = path.join(projectRoot, `debug-import-btn-fail-${Date.now()}.png`);
-      await page.screenshot({ path: screenshotPath, fullPage: true });
-      process.stderr.write(`[import] Screenshot saved: ${screenshotPath}\n`);
-    } catch (_) {}
+    await takeDebugScreenshot(page, 'import-btn-fail');
     throw new Error('Could not click Import button');
   }
   process.stderr.write('[import] Clicked Import button\n');
+  await takeDebugScreenshot(page, 'after-import-click');
 
   await browser.humanDelay(300, 600);
 
