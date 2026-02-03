@@ -61,13 +61,45 @@ async function main() {
   await page.setViewportSize({ width: 1280, height: 900 });
 
   const editUrl = `https://www.google.com/maps/d/edit?mid=${mid}`;
-  await page.goto(editUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.goto(editUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
+  
+  // Wait for page to fully load
+  await page.waitForTimeout(2000);
 
-  // Click "Add layer" as soon as it's visible
-  const addLayer = page.getByText('Add layer', { exact: true }).first();
-  await addLayer.click({ timeout: 10000 }).catch(() =>
-    page.getByRole('button', { name: /add layer/i }).first().click({ timeout: 3000 })
-  );
+  // Click "Add layer" - try multiple methods with longer timeouts
+  let addedLayer = false;
+  
+  // Method 1: By exact text
+  try {
+    const addLayer = page.getByText('Add layer', { exact: true }).first();
+    await addLayer.waitFor({ state: 'visible', timeout: 15000 });
+    await addLayer.click({ timeout: 5000 });
+    addedLayer = true;
+  } catch (_) {}
+
+  // Method 2: By role
+  if (!addedLayer) {
+    try {
+      const addLayerBtn = page.getByRole('button', { name: /add layer/i }).first();
+      await addLayerBtn.click({ timeout: 10000 });
+      addedLayer = true;
+    } catch (_) {}
+  }
+
+  // Method 3: By any clickable element with "Add layer" text
+  if (!addedLayer) {
+    try {
+      const addLayerAny = page.locator('text=/add layer/i').first();
+      await addLayerAny.click({ timeout: 10000 });
+      addedLayer = true;
+    } catch (_) {}
+  }
+
+  if (!addedLayer) {
+    throw new Error('Could not click Add layer button');
+  }
+  
+  await page.waitForTimeout(500);
 
   // Click "Import" immediately
   const importBtn = page.getByText('Import', { exact: true }).first();
