@@ -33,11 +33,14 @@ let mapMarkers = [];
 
 // Helper to detect session expired and open re-auth page
 function handleError(message) {
-  if (message && (
-    message.toLowerCase().includes('session expired') ||
-    message.toLowerCase().includes('re-authenticate') ||
-    message.toLowerCase().includes('sign in')
-  )) {
+  const msg = (message || '').toLowerCase();
+  if (
+    msg.includes('session expired') ||
+    msg.includes('sign in required') ||
+    msg.includes("verify it's you") ||
+    msg.includes('verify it') ||
+    msg.includes('re-authenticate')
+  ) {
     // Build noVNC URL from current host
     const vncUrl = `http://${window.location.hostname}:6080/vnc.html`;
     const openVnc = confirm(

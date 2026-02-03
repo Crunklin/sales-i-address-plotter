@@ -126,17 +126,33 @@ export async function closeBrowser() {
  */
 export async function checkGoogleSession(page) {
   const currentUrl = page.url();
-  const pageContent = await page.content();
-  
-  if (
-    currentUrl.includes('accounts.google.com') ||
-    currentUrl.includes('/signin') ||
-    pageContent.includes('Verify it') ||
-    pageContent.includes('Sign in') && pageContent.includes('Google') ||
-    pageContent.includes('sign in again')
-  ) {
+
+  // Strong signal: Google auth URLs
+  if (/(accounts\.google\.com|\/signin|\/ServiceLogin|\/challenge|\/CheckCookie|\/accountchooser)/i.test(currentUrl)) {
     return false;
   }
+
+  // Strong signal: login form fields
+  const loginFields = page.locator(
+    'input[type="email"], input[type="password"], #identifierId, input[name="identifier"], input[name="Passwd"]'
+  );
+  if (await loginFields.count() > 0) {
+    return false;
+  }
+
+  // Weaker signal: sign-in links, only if we can't see My Maps UI
+  const signInLink = page.locator('a[href*="accounts.google.com"], a[href*="ServiceLogin"], a[href*="/signin"]');
+  const hasSignInLink = (await signInLink.count()) > 0;
+
+  const hasCreateMap = (await page.getByText(/create a new map/i).count()) > 0;
+  const hasAddLayer = (await page.getByText(/add layer/i).count()) > 0;
+  const hasMapTitle = (await page.locator('[aria-label*="map title" i], [aria-label*="map name" i]').count()) > 0;
+  const hasMyMapsUi = hasCreateMap || hasAddLayer || hasMapTitle;
+
+  if (hasSignInLink && !hasMyMapsUi) {
+    return false;
+  }
+
   return true;
 }
 

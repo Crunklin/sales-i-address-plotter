@@ -23,6 +23,34 @@ const isVps = !!process.env.DISPLAY; // VPS runs with Xvfb
 // Human-like delay
 const humanDelay = (min = 500, max = 1500) => new Promise(r => setTimeout(r, Math.random() * (max - min) + min));
 
+async function isAuthRequired(page) {
+  const currentUrl = page.url();
+
+  if (/(accounts\.google\.com|\/signin|\/ServiceLogin|\/challenge|\/CheckCookie|\/accountchooser)/i.test(currentUrl)) {
+    return true;
+  }
+
+  const loginFields = page.locator(
+    'input[type="email"], input[type="password"], #identifierId, input[name="identifier"], input[name="Passwd"]'
+  );
+  if (await loginFields.count() > 0) {
+    return true;
+  }
+
+  const signInLink = page.locator('a[href*="accounts.google.com"], a[href*="ServiceLogin"], a[href*="/signin"]');
+  const hasSignInLink = (await signInLink.count()) > 0;
+
+  const hasCreateMap = (await page.getByText(/create a new map/i).count()) > 0;
+  const hasAddLayer = (await page.getByText(/add layer/i).count()) > 0;
+  const hasMyMapsUi = hasCreateMap || hasAddLayer;
+
+  if (hasSignInLink && !hasMyMapsUi) {
+    return true;
+  }
+
+  return false;
+}
+
 async function main() {
   const launchOpts = {
     headless,
@@ -241,15 +269,7 @@ async function main() {
   await humanDelay(1000, 2000);
   
   // Check if we hit a Google sign-in/verification page
-  const currentUrl = page.url();
-  const pageContent = await page.content();
-  if (
-    currentUrl.includes('accounts.google.com') ||
-    currentUrl.includes('/signin') ||
-    pageContent.includes('Verify it') ||
-    pageContent.includes('Sign in') ||
-    pageContent.includes('sign in again')
-  ) {
+  if (await isAuthRequired(page)) {
     await context.close();
     process.stderr.write('[list-mymaps] Google session expired - sign in required.\n');
     console.log(JSON.stringify({ error: 'Google session expired - sign in required. The app will help you re-authenticate.' }));
