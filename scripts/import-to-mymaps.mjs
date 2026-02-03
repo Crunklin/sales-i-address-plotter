@@ -27,6 +27,39 @@ if (!fs.existsSync(kmlPath)) {
   process.exit(1);
 }
 
+async function tryClickImport(scope) {
+  const candidates = [
+    scope.getByRole('button', { name: /^import$/i }).first(),
+    scope.getByText('Import', { exact: true }).first(),
+    scope.locator('[role="button"]:has-text("Import")').first(),
+    scope.locator('button:has-text("Import")').first(),
+    scope.locator('[data-tooltip*="Import" i]').first(),
+    scope.locator('[aria-label*="Import" i]').first(),
+    scope.locator('text=/^import$/i').first(),
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      await candidate.waitFor({ state: 'visible', timeout: 15000 });
+      await candidate.scrollIntoViewIfNeeded().catch(() => {});
+      await browser.clickDelay();
+      await candidate.click({ timeout: 5000 });
+      return true;
+    } catch (_) {}
+  }
+
+  return false;
+}
+
+async function clickImportButton(page) {
+  if (await tryClickImport(page)) return true;
+  for (const frame of page.frames()) {
+    if (frame === page.mainFrame()) continue;
+    if (await tryClickImport(frame)) return true;
+  }
+  return false;
+}
+
 async function main() {
   const page = await browser.getPage();
   
@@ -83,13 +116,11 @@ async function main() {
     
     await browser.humanDelay(800, 1500);
 
-    // Click "Import" with human delay
-    await browser.clickDelay();
-    const importBtn = page.getByText('Import', { exact: true }).first();
-    await importBtn.click({ timeout: 5000 }).catch(async () => {
-      await browser.clickDelay();
-      await page.getByRole('button', { name: /import/i }).first().click({ timeout: 3000 });
-    });
+    // Click "Import" with robust selectors and human delay
+    const importClicked = await clickImportButton(page);
+    if (!importClicked) {
+      throw new Error('Could not click Import button');
+    }
 
     await browser.humanDelay(500, 1000);
 
