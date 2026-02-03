@@ -45,7 +45,7 @@ async function dismissChromeDialogs(page) {
     if (await restoreBtn.isVisible({ timeout: 1000 }).catch(() => false)) {
       process.stderr.write('[import] Dismissing "Restore pages" dialog...\n');
       // Click the X or close button instead of restore to avoid loading old tabs
-      const closeBtn = page.locator('button:has-text("×"), button:has-text("Close"), button:has-text("Don\\'t restore")').first();
+      const closeBtn = page.locator("button:has-text('×'), button:has-text('Close'), button:has-text('Don\\'t restore')").first();
       if (await closeBtn.isVisible({ timeout: 500 }).catch(() => false)) {
         await closeBtn.click();
       } else {
