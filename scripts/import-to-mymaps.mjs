@@ -2,7 +2,7 @@
 /**
  * Add a new layer to a specific My Map and import the KML file.
  * Used by the app after user picks a map in the UI.
- * Usage: node scripts/import-to-mymaps.mjs <mid> [kmlPath] [layerName]
+ * Usage: node scripts/import-to-mymaps.mjs <mid> [kmlPath]
  */
 
 import path from 'path';
@@ -16,9 +16,7 @@ const defaultKmlPath = path.join(projectRoot, 'address-plotter-export.kml');
 
 const mid = process.argv[2];
 const kmlPath = process.argv[3] ? path.resolve(process.cwd(), process.argv[3]) : defaultKmlPath;
-const layerName = process.argv[4] || '';
-const IMPORT_SETTLE_MS = parseInt(process.env.MYMAPS_IMPORT_SETTLE_MS || '30000', 10);
-const LAYER_POLL_MS = 600;
+const IMPORT_SETTLE_MS = parseInt(process.env.MYMAPS_IMPORT_SETTLE_MS || '4000', 10);
 
 if (!mid) {
   process.stderr.write('Usage: node scripts/import-to-mymaps.mjs <mid> [kmlPath] [layerName]\n');
@@ -60,25 +58,6 @@ async function clickImportButton(page) {
     if (await tryClickImport(frame)) return true;
   }
   return false;
-}
-
-async function isLayerPresent(page, label) {
-  if (!label) return false;
-  const exact = page.getByText(label, { exact: true });
-  if (await exact.count() > 0) return true;
-  const partial = page.getByText(label, { exact: false });
-  return (await partial.count()) > 0;
-}
-
-async function waitForLayer(page, labels, timeoutMs) {
-  const start = Date.now();
-  while (Date.now() - start < timeoutMs) {
-    for (const label of labels) {
-      if (await isLayerPresent(page, label)) return label;
-    }
-    await page.waitForTimeout(LAYER_POLL_MS);
-  }
-  return null;
 }
 
 async function main() {
@@ -192,86 +171,7 @@ async function main() {
       await page.getByRole('button', { name: /finish|done|ok/i }).first().click({ timeout: 3000 });
     } catch (_) {}
 
-    const kmlBaseName = path.basename(kmlPath, '.kml');
-    const detectedLabel = await waitForLayer(page, [layerName, kmlBaseName], IMPORT_SETTLE_MS);
-    if (!detectedLabel) {
-      process.stderr.write(`[import] Layer not detected after ${IMPORT_SETTLE_MS}ms. Assuming import completed.\n`);
-    }
-
-    // Rename layer if specified and detected
-    if (layerName && detectedLabel && detectedLabel !== layerName) {
-      try {
-        // Short wait for the import to settle
-        await browser.humanDelay(300, 600);
-
-        process.stderr.write(`[import] Looking for layer to rename (from ${kmlBaseName} to ${layerName})...\n`);
-
-        let clicked = false;
-
-        // Method 1: Find by the KML document name
-        if (!clicked) {
-          try {
-            const layerTitle = page.getByText(kmlBaseName, { exact: true }).first();
-            await browser.clickDelay();
-            await layerTitle.click({ timeout: 3000 });
-            clicked = true;
-            process.stderr.write('[import] Clicked layer by KML name\n');
-          } catch (_) {}
-        }
-
-        // Method 2: Try partial match on KML name
-        if (!clicked) {
-          try {
-            const layerTitle = page.locator(`text="${kmlBaseName}"`).first();
-            await browser.clickDelay();
-            await layerTitle.click({ timeout: 3000 });
-            clicked = true;
-            process.stderr.write('[import] Clicked layer by partial KML name\n');
-          } catch (_) {}
-        }
-
-        // Method 3: Look for contenteditable elements
-        if (!clicked) {
-          try {
-            const editables = page.locator('[contenteditable="true"]');
-            const count = await editables.count();
-            if (count > 0) {
-              await browser.clickDelay();
-              await editables.last().click({ timeout: 3000 });
-              clicked = true;
-              process.stderr.write('[import] Clicked last contenteditable element\n');
-            }
-          } catch (_) {}
-        }
-
-        // Method 4: Find "Untitled layer"
-        if (!clicked) {
-          try {
-            const untitled = page.getByText('Untitled layer', { exact: false }).first();
-            await browser.clickDelay();
-            await untitled.click({ timeout: 3000 });
-            clicked = true;
-            process.stderr.write('[import] Clicked Untitled layer\n');
-          } catch (_) {}
-        }
-
-        if (clicked) {
-          await browser.humanDelay(200, 400);
-          await page.keyboard.press('Control+a');
-          await browser.humanType(page, layerName);
-          await page.keyboard.press('Enter');
-          await browser.humanDelay(150, 300);
-          process.stderr.write(`[import] Renamed layer to: ${layerName}\n`);
-        } else {
-          process.stderr.write('[import] Could not find layer title element to click\n');
-        }
-
-      } catch (e) {
-        process.stderr.write('[import] Could not rename layer: ' + e.message + '\n');
-      }
-    } else if (layerName && detectedLabel === layerName) {
-      process.stderr.write('[import] Layer already named as requested.\n');
-    }
+    await page.waitForTimeout(IMPORT_SETTLE_MS);
 
     await browser.humanDelay(100, 300);
     // Close browser to release profile lock for next operation

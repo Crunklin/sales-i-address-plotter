@@ -408,7 +408,8 @@ function escapeXml(s) {
 
 function buildKmlForSheet(sheet) {
   const placemarks = sheet.geocodedRows.map(kmlPlacemark).filter(Boolean).join('');
-  const docName = escapeXml(sheet.filename.replace(/\.csv$/i, ''));
+  const rawName = (sheet.layerName || '').trim() || sheet.filename.replace(/\.csv$/i, '');
+  const docName = escapeXml(rawName);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
   <Document>
