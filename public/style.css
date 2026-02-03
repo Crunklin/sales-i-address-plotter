@@ -205,6 +205,21 @@ tr:hover td {
   background: #3f3f46;
 }
 
+.export-hint {
+  margin-top: 0.75rem;
+  font-size: 0.85rem;
+  color: #a1a1aa;
+}
+
+.export-hint a {
+  color: #3b82f6;
+  text-decoration: none;
+}
+
+.export-hint a:hover {
+  text-decoration: underline;
+}
+
 .mymaps-flow {
   margin-top: 1rem;
   padding: 1rem;

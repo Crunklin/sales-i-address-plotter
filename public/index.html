@@ -10,7 +10,7 @@
 <body>
   <header>
     <h1>Sales-i Address Plotter</h1>
-    <p>Stop wasting time cleaning up Sales-i exports by hand. Drop your CSV here, and we'll scrub the addresses, find the coordinates, and push everything straight to Google My Maps in just a few clicks.</p>
+    <p>Stop wasting time cleaning up Sales-i exports by hand. Drop your CSV here, and we'll scrub the addresses, find the coordinates, and export to KML for use in Google My Maps or other mapping tools.</p>
   </header>
 
   <main>
@@ -52,40 +52,9 @@
       </div>
       <div class="export">
         <button type="button" id="exportKml">Export KML (download)</button>
-        <button type="button" id="addToMyMaps">Add to Google My Maps (automated)</button>
         <button type="button" id="exportCsv">Export CSV (lat, lng)</button>
       </div>
-      <div class="mymaps-flow hidden" id="mymapsFlow">
-        <p><strong>Ready to import.</strong> Select a map or create a new one:</p>
-
-        <div class="mymaps-picker">
-          <button type="button" id="loadMapsBtn">Load my maps</button>
-          <button type="button" id="createMapBtn">Create new map</button>
-          <span class="mymaps-status" id="mymapsStatus"></span>
-        </div>
-
-        <div class="mymaps-new-map hidden" id="mymapsNewMap">
-          <label for="newMapName">New map name:</label>
-          <input type="text" id="newMapName" placeholder="My new map" />
-          <button type="button" id="confirmCreateMapBtn">Create and add layer</button>
-        </div>
-
-        <div class="mymaps-select-wrap hidden" id="mymapsSelectWrap">
-          <label for="mymapsSelect">Map:</label>
-          <select id="mymapsSelect"></select>
-          <button type="button" id="importToMapBtn">Add layer to selected map</button>
-        </div>
-
-
-        <div class="mymaps-preview hidden" id="mymapsPreview">
-          <p class="mymaps-preview-label">Map preview:</p>
-          <iframe id="mymapsIframe" src="" allowfullscreen loading="lazy"></iframe>
-          <p class="mymaps-preview-hint">
-            <a href="#" id="openMapLink" target="_blank">Open in Google My Maps</a> 
-            <span class="mymaps-preview-note">(Preview only works for public/shared maps. New maps are private by default.)</span>
-          </p>
-        </div>
-      </div>
+      <p class="export-hint">Download KML files and import them manually into <a href="https://www.google.com/maps/d/" target="_blank">Google My Maps</a>.</p>
     </section>
   </main>
 
