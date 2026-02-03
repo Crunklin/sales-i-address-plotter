@@ -5,9 +5,13 @@
  * Usage: node scripts/list-mymaps.mjs
  */
 
-import { chromium } from 'playwright';
+import { chromium } from 'playwright-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
+// Add stealth plugin
+chromium.use(StealthPlugin());
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
@@ -15,6 +19,9 @@ const userDataDir = process.env.BROWSER_USER_DATA_DIR || path.join(projectRoot, 
 // On VPS with Xvfb we set DISPLAY=:99 and run non-headless; otherwise headless for automation-only envs
 const headless = !process.env.DISPLAY;
 const isVps = !!process.env.DISPLAY; // VPS runs with Xvfb
+
+// Human-like delay
+const humanDelay = (min = 500, max = 1500) => new Promise(r => setTimeout(r, Math.random() * (max - min) + min));
 
 async function main() {
   const launchOpts = {
@@ -230,8 +237,10 @@ async function main() {
   const navTimeout = isVps ? 60000 : 30000;
   await page.goto('https://www.google.com/maps/d/', { waitUntil: 'domcontentloaded', timeout: navTimeout });
   
+  // Human-like wait
+  await humanDelay(1000, 2000);
+  
   // Check if we hit a Google sign-in/verification page
-  await page.waitForTimeout(1000);
   const currentUrl = page.url();
   const pageContent = await page.content();
   if (
