@@ -171,8 +171,8 @@ async function geocodeAllSheets() {
   activeSheetIndex = 0;
   renderSheetsList();
   sheetsSection.classList.remove('hidden');
-  showActiveSheet();
   resultsSection.classList.remove('hidden');
+  showActiveSheet();
 }
 
 function renderSheetsList() {
@@ -353,6 +353,14 @@ function drawAllSheetsMap(selectedSheets) {
   } else {
     lastMapBounds = null;
   }
+
+  // Ensure tiles render after container becomes visible
+  setTimeout(() => {
+    mapInstance.invalidateSize();
+    if (lastMapBounds) {
+      mapInstance.fitBounds(lastMapBounds, { padding: [24, 24] });
+    }
+  }, 0);
 }
 
 document.querySelectorAll('.tab').forEach((btn) => {

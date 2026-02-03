@@ -17,7 +17,7 @@ const defaultKmlPath = path.join(projectRoot, 'address-plotter-export.kml');
 const mid = process.argv[2];
 const kmlPath = process.argv[3] ? path.resolve(process.cwd(), process.argv[3]) : defaultKmlPath;
 const layerName = process.argv[4] || '';
-const IMPORT_SETTLE_MS = parseInt(process.env.MYMAPS_IMPORT_SETTLE_MS || '60000', 10);
+const IMPORT_SETTLE_MS = parseInt(process.env.MYMAPS_IMPORT_SETTLE_MS || '30000', 10);
 const LAYER_POLL_MS = 600;
 
 if (!mid) {
@@ -195,7 +195,7 @@ async function main() {
     const kmlBaseName = path.basename(kmlPath, '.kml');
     const detectedLabel = await waitForLayer(page, [layerName, kmlBaseName], IMPORT_SETTLE_MS);
     if (!detectedLabel) {
-      process.stderr.write(`[import] Layer not detected after ${IMPORT_SETTLE_MS}ms. Continuing.\n`);
+      process.stderr.write(`[import] Layer not detected after ${IMPORT_SETTLE_MS}ms. Assuming import completed.\n`);
     }
 
     // Rename layer if specified and detected
