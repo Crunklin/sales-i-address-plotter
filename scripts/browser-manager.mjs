@@ -14,6 +14,8 @@ chromium.use(StealthPlugin());
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = path.resolve(__dirname, '..');
 const defaultUserDataDir = process.env.BROWSER_USER_DATA_DIR || path.join(projectRoot, 'playwright-my-maps-profile');
+const LAUNCH_RETRIES = parseInt(process.env.BROWSER_LAUNCH_RETRIES || '5', 10);
+const LAUNCH_RETRY_DELAY_MS = parseInt(process.env.BROWSER_LAUNCH_RETRY_DELAY_MS || '1500', 10);
 
 let browserContext = null;
 let lastActivity = Date.now();
@@ -23,6 +25,26 @@ const SESSION_TIMEOUT = 10 * 60 * 1000; // 10 minutes of inactivity before closi
 export function humanDelay(min = 500, max = 1500) {
   const delay = Math.floor(Math.random() * (max - min + 1)) + min;
   return new Promise(resolve => setTimeout(resolve, delay));
+}
+
+function isProcessSingletonError(err) {
+  const msg = String(err?.message || err || '');
+  return (
+    msg.includes('ProcessSingleton') ||
+    msg.includes('profile directory is already in use') ||
+    msg.includes('user data directory is already in use')
+  );
+}
+
+async function launchPersistentContextWithFallback(userDataDir, launchOpts) {
+  try {
+    return await chromium.launchPersistentContext(userDataDir, {
+      ...launchOpts,
+      channel: 'chrome',
+    });
+  } catch (_) {
+    return await chromium.launchPersistentContext(userDataDir, launchOpts);
+  }
 }
 
 // Longer delay for significant actions
@@ -71,14 +93,20 @@ export async function getBrowser(userDataDir = defaultUserDataDir) {
     viewport: { width: 1280, height: 900 },
   };
 
-  // Try with Chrome channel first, fall back to bundled Chromium
-  try {
-    browserContext = await chromium.launchPersistentContext(userDataDir, {
-      ...launchOpts,
-      channel: 'chrome',
-    });
-  } catch (e) {
-    browserContext = await chromium.launchPersistentContext(userDataDir, launchOpts);
+  // Try with Chrome channel first, fall back to bundled Chromium (with retry on profile lock)
+  const maxAttempts = Number.isFinite(LAUNCH_RETRIES) ? Math.max(0, LAUNCH_RETRIES) + 1 : 6;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      browserContext = await launchPersistentContextWithFallback(userDataDir, launchOpts);
+      return browserContext;
+    } catch (e) {
+      if (isProcessSingletonError(e) && attempt < maxAttempts) {
+        process.stderr.write(`[browser] Profile locked, retrying (${attempt}/${maxAttempts - 1})...\n`);
+        await new Promise((r) => setTimeout(r, LAUNCH_RETRY_DELAY_MS));
+        continue;
+      }
+      throw e;
+    }
   }
 
   return browserContext;
