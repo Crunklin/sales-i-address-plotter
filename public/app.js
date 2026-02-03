@@ -31,6 +31,35 @@ let activeSheetIndex = 0; // Which sheet is being viewed
 let mapInstance = null;
 let mapMarkers = [];
 
+// Helper to detect session expired and open re-auth page
+function handleError(message) {
+  if (message && (
+    message.toLowerCase().includes('session expired') ||
+    message.toLowerCase().includes('re-authenticate') ||
+    message.toLowerCase().includes('sign in')
+  )) {
+    // Build noVNC URL from current host
+    const vncUrl = `http://${window.location.hostname}:6080/vnc.html`;
+    const openVnc = confirm(
+      `Google session expired!\n\n` +
+      `Click OK to open the re-authentication page.\n` +
+      `Complete the Google sign-in, then close that tab and try again.`
+    );
+    if (openVnc) {
+      window.open(vncUrl, '_blank');
+    }
+    return true; // Indicates it was a session error
+  }
+  return false;
+}
+
+// Wrapper for showing errors - auto-opens VNC for session issues
+function showError(message) {
+  if (!handleError(message)) {
+    alert(message);
+  }
+}
+
 const filesSelected = document.getElementById('filesSelected');
 
 fileInput.addEventListener('change', () => {
@@ -394,7 +423,7 @@ addToMyMaps.addEventListener('click', async () => {
     mymapsStatus.textContent = `${selected.length} sheet(s) selected. Edit layer names above if needed.`;
     currentMapId = null;
   } catch (e) {
-    alert(e.message || 'Failed to save KML for My Maps.');
+    showError(e.message || 'Failed to save KML for My Maps.');
   }
 });
 
@@ -417,7 +446,7 @@ loadMapsBtn.addEventListener('click', async () => {
     }
   } catch (e) {
     mymapsStatus.textContent = '';
-    alert(e.message || 'Failed to load maps.');
+    showError(e.message || 'Failed to load maps.');
   } finally {
     loadMapsBtn.disabled = false;
   }
@@ -482,7 +511,7 @@ async function importAllSheetsToMap(mid) {
       if (!res.ok) throw new Error(data.error || 'Import failed');
       
     } catch (e) {
-      alert(`Failed to import ${sheet.filename}: ${e.message}`);
+      showError(`Failed to import ${sheet.filename}: ${e.message}`);
       return false;
     }
   }
@@ -542,7 +571,7 @@ confirmCreateMapBtn.addEventListener('click', async () => {
     mymapsNewMap.classList.add('hidden');
   } catch (e) {
     mymapsStatus.textContent = '';
-    alert(e.message || 'Failed to create map.');
+    showError(e.message || 'Failed to create map.');
   } finally {
     confirmCreateMapBtn.disabled = false;
     createMapBtn.disabled = false;
