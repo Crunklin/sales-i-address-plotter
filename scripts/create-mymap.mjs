@@ -59,7 +59,7 @@ async function main() {
     pageContent.includes('sign in again')
   ) {
     await context.close();
-    throw new Error('Google session expired. Please re-authenticate via VNC on the VPS and try again.');
+    throw new Error('Google session expired - sign in required. The app will help you re-authenticate.');
   }
 
   // Click "Create a new map" button

@@ -76,7 +76,7 @@ async function main() {
     pageContent.includes('Sign in') ||
     pageContent.includes('sign in again')
   ) {
-    throw new Error('Google session expired. Please re-authenticate via VNC on the VPS and try again.');
+    throw new Error('Google session expired - sign in required. The app will help you re-authenticate.');
   }
 
   // Click "Add layer" - try multiple methods with longer timeouts

@@ -242,8 +242,8 @@ async function main() {
     pageContent.includes('sign in again')
   ) {
     await context.close();
-    process.stderr.write('[list-mymaps] Google session expired. Please re-authenticate via VNC.\n');
-    console.log(JSON.stringify({ error: 'Google session expired. Please re-authenticate via VNC on the VPS and try again.' }));
+    process.stderr.write('[list-mymaps] Google session expired - sign in required.\n');
+    console.log(JSON.stringify({ error: 'Google session expired - sign in required. The app will help you re-authenticate.' }));
     process.exit(1);
   }
 

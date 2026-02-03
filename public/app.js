@@ -41,9 +41,15 @@ function handleError(message) {
     // Build noVNC URL from current host
     const vncUrl = `http://${window.location.hostname}:6080/vnc.html`;
     const openVnc = confirm(
-      `Google session expired!\n\n` +
-      `Click OK to open the re-authentication page.\n` +
-      `Complete the Google sign-in, then close that tab and try again.`
+      `🔐 Google Login Required\n\n` +
+      `Google is asking you to verify your identity. This happens periodically for security.\n\n` +
+      `What to do:\n` +
+      `1. Click OK to open the server's browser view\n` +
+      `2. You'll see Google's sign-in page - enter your password\n` +
+      `3. Complete any verification (if asked)\n` +
+      `4. Once signed in, close that tab\n` +
+      `5. Come back here and try again\n\n` +
+      `Click OK to open the sign-in page now.`
     );
     if (openVnc) {
       window.open(vncUrl, '_blank');
