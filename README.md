@@ -18,11 +18,11 @@ Open **http://localhost:3000**, choose a CSV, click **Process CSV (clean & geoco
 ## What gets cleaned
 
 - **PO Box** – `P.O. Box 123`, `PO BOX 640`, `P O BOX 389`, `Post Office Box` (removed from the line; Town + Postcode still used for geocoding)
-- **Attn / department** – `Attn: Purchasing Dept`, `ATTN. ACCOUNTS PAYABLE`, `Att: Shawn Hoover`
-- **c/o** – `c/o John Smith`
+- **Attn / department** – `Attn: Purchasing Dept`, `ATTN. ACCOUNTS PAYABLE`.
+- **c/o** – `c/o John Doe`
 - **Phone-like** – trailing patterns like `522-6004`, `(517) 555-1234`
-- **Ref numbers** – `V# 784355`-style tokens
-- **Leading “Attn” line** – e.g. `ATTN. ACCOUNTS PAYABLE 18620 16 MILE RD` → keeps `18620 16 MILE RD`
+- **Ref numbers** – `V# 73484355`-style tokens
+- **Leading “Attn” line** – e.g. `ATTN. ACCOUNTS PAYABLE 18620 166 MILE RD` → keeps `18620 166 MILE RD`
 
 Address is built by joining **Address1, Address2, Address3, Address4, Town, County, Postcode** (empty parts skipped), then cleaned. State defaults to **MI**; you can change it in the API if needed.
 
